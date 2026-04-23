@@ -1,0 +1,15 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  // this is only for ide/language server, no major false positives and true negatives is enough,
+  // typescript transpilation is generally not used in this project, all local scripts use nodejs to directly run .ts file,
+  // for now scripts running in browser use a manual typescript/bin/tsc invocation to transpile into js, if that gets complicated
+  // and would like to use multiple source files, https://github.com/FreskyZ/fine/blob/master/script/components/mypack.ts will be used
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext", "DOM"],
+    "types": ["node"],
+    "strict": false,
+    "skipLibCheck": true,
+  }
+}

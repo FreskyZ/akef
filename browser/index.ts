@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import type * as spec from './spec.js';
+import type * as spec from './spec-types.js';
 
 // create session, display and exit
 async function createSession(): Promise<never> {

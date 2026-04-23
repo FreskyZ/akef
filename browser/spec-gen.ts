@@ -2,12 +2,16 @@ import fs from 'node:fs/promises';
 
 // see https://github.com/webdriverio/webdriverio/blob/main/packages/wdio-protocols/src/protocols/webdriverBidi.ts
 // and https://github.com/webdriverio/webdriverio/blob/main/scripts/bidi/index.ts
-// generate type definitions from https://github.com/w3c/webdriver-bidi/blob/main/index.bs
 // cddl syntax https://datatracker.ietf.org/doc/html/rfc8610
+
+// specification original text https://github.com/w3c/webdriver-bidi/blob/main/index.bs
+const response = await fetch('https://raw.githubusercontent.com/w3c/webdriver-bidi/43236c6232ca15cd856a75470b8c665996132473/index.bs');
+const responseText = await response.text();
+// await fs.writeFile('webdriver-bidi.bs', responseText);
 
 // stage 1. collect all <pre class="cddl">
 
-const originalContent = await fs.readFile('codegen/spec.bs', 'utf-8');
+const originalContent = responseText; // await fs.readFile('webdriver-bidi.bs', 'utf-8');
 const originalLines = originalContent.split('\n').map((r, i) => [r, i] as const);
 
 let beginIndex = -1; // >=0 means currently inside a <pre>, and the pre's rowindex is beginindex
@@ -1015,4 +1019,4 @@ const emitHost: EmitHost = {
     level: 0,
 };
 generate(emitHost, declarations);
-await fs.writeFile('src/spec.ts', emitHost.b);
+await fs.writeFile('browser/spec-types.ts', emitHost.b);
