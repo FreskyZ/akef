@@ -1,19 +1,6 @@
 # Browser Automation
 
-Current workflow:
-
-- copy weapon.json into autobrowser folder if not exist is not same as endfield/sanity/weapon.json
-- start browser: docker run -d -p8002:8002 -p8004:8004 --rm --name browser1 my/browser:1
-- start node shell: docker run -it -v.:/work --rm --name browsernode1 -h BROWSER-NODE -w /work --network host my/node:1
-- uncomment createSession in index.ts, run node index.ts, copy session id into index.ts, comment createSession
-- get page id by curl localhost:8002/json/list, copy page id into index.ts, open devtools frontend url in windows browser
-  http://localhost:8002/devtools/inspector.html?ws=localhost:8002/devtools/page/{pageid}
-- navigate to https://wiki.skland.com/endfield/catalog?typeMainId=1&typeSubId=2
-- run index.ts
-
-### Motivation
-
-First, I need to develop tools for Arknights: Endfield, see ../endfield
+First, I need to develop tools for Arknights: Endfield
 
 - Then, I need game data, the official wiki site https://wiki.skland.com is hard to use, does not contain much
   information than in game data, and its api data structure is not suitable for human and AI to understand, other
@@ -45,6 +32,12 @@ First, webdriver executable according to my browser automation experience
     old download url in ancient days
   - why is there so many by-the-ways? because I have difficulties downloading linux platform edge webdriver for some
     time, and after some other time I surprisingly find nearly all previous approaches magically works, so record here
+
+by the way, msedge linux download link is not available on https://www.microsoft.com/en-us/edge/download,
+the deb files are available https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/,
+if you read official document https://learn.microsoft.com/en-us/linux/packages and set uri = p.m.c in source config
+file in /etc/apt/sources.list.d, then msedge is not available, you need to set uri = p.m.c/repos/msedge, or for now
+I'm directly downloading the deb file to install
 
 ### Automation Library/Framework
 
@@ -96,6 +89,8 @@ WebDriver BiDi protocol (bidi), https://github.com/w3c/webdriver-bidi or https:/
   see https://w3c.github.io/webdriver/#new-session, currently there is no way to list pages use bidi command, need to
   use classic api https://w3c.github.io/webdriver/#get-window-handles
 
+after connection
+
 - POST localhost:{driverport}/session with body like this
   { capabilities: { alwaysMatch: { webSocketUrl: true, 'ms:edgeOptions': { args: ["headless", "no-sandbox"] } } } },
   get response json, session id is response.value.sessionId, websocket url is response.value.capabilities.webSocketUrl,
@@ -107,10 +102,12 @@ WebDriver BiDi protocol (bidi), https://github.com/w3c/webdriver-bidi or https:/
   so you can first create the session by a small script and then use the session id and page id in later operations
 - need a lot of types to call call javascript functions api, so spend some time to code generate all types in the
   specification, it looks very cool that I kind of want to publish it in a standalone repo
-- complete basic data crawling for endfield/essence.py use, this library looks very cool and does not use any external
-  library that I kind of want to publish it in a standalone repo
+- complete basic data crawling for essence.py use, this library looks very cool and does not use any external library
+  that I kind of want to publish it in a standalone repo
 
-- by the way, the https://npmjs.com/package/webdriver package readme claims that "There are tons of Selenium and
+by the way,
+
+- the https://npmjs.com/package/webdriver package readme claims that "There are tons of Selenium and
   WebDriver binding implementations in the Node.js world", and link to a section in the awesome repository
   https://github.com/christian-bromann/awesome-selenium#javascript, with the background knowledge that selenium is a
   very old library, click into the links in the section results in...
@@ -184,7 +181,7 @@ WebDriver BiDi protocol (bidi), https://github.com/w3c/webdriver-bidi or https:/
   things more annoying, the cannot access the endpoint in hyperv machine, the cannot access it from container to
   windows host, the cannot access in another container, and the cannot access from host to container ALL come from this
 
-  *rest for some time to calm down*
+*rest for some time to calm down*
 
 - the "devtoolsFrontendUrl" in /json/list response is the url to connect on gui browser to display current page content
   and operate that page's devtool, this url is unexpectedly prefixed https://aka.ms/docs-landing-page/serve_rev/ in
