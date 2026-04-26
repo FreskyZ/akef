@@ -1,19 +1,20 @@
 import fs from 'node:fs/promises';
 import { styleText } from 'node:util';
 import { randomInt } from 'node:crypto';
+import yaml from 'yaml';
 
-// 明日方舟：终末地 基质规划
-// weapon and attributes from weapon.json from autobrowser project
+// 基质规划
 
-// put progress before other things to make it easy to find and change
-// // do I need to frequently change it?
-// // yes, if you frequently change it, it's better to put it at top,
-// // if you rarely change it, it's better to put it at top to make it easier to find
-interface Progress {
+// my current in game progress
+// NOTE currently the level progress is not used, I'm not ocr battle result
+// to find newly acquired level is above existing level progress, but this is
+// actually interesting history of my real game progress, so keep them here
+// beside git blame this, also git blame https://github.com/FreskyZ/small/blob/a34905b6e1c38123f/endfield/sanity/essence.ts
+interface LevelProgress {
     name: string,
     progress: [number, number, number],
 }
-const AllProgress: Progress[] = [
+const AllProgress: LevelProgress[] = [
     { name: '宏愿', progress: [3, 2, 2] },
     { name: '遗忘', progress: [2, 1, 1] },
     { name: 'J.E.T.', progress: [2, 1, 1] },
@@ -54,241 +55,182 @@ const AllProgress: Progress[] = [
     { name: '雾中微光', progress: [1, 1, 1] },
     // { name: '', progress: [1, 1, 1] },
 ];
-// NOTE this progress list precisely represent my overall progress
-// so cut the progress list in the middle effectively creates test cases for the following sort logic
-// AllProgress.splice(15, 100);
+// for now
+// 正在用的武器: 100
+// 想要练的干员的专武：2
+// default: 1
+// 不感兴趣：0.5
+// 过期专武暂无复刻：0.5
+// 过期通行证武器暂无复刻: 0.25
+// rarity 5 not allowed in this list and fixed: 0.25
+const RemainingWeights: { name: string, weight: number }[] = [
+    { name: '爆破单元', weight: 2 }, // this is the only remaining owned 6 star weapon without essence
+    { name: '逐鳞3.0', weight: 2 },
+    { name: '悼亡诗', weight: 2 },
+    // { name: '爆破单元', weight: 100 },
+];
 
-// you call a 重度能量淤积点 protocol space? more naming conventions:
+// you call a 重度能量淤积点 protocol space? more on naming conventions:
 // - 基础属性 is category 1, 附加属性 is category 2, 技能属性 is category 3
 // - 敏捷提升 is an attribute, 敏捷提升·大 is a weapon attribute, 大，中，小 is attribute strength
 // - 切骨·艺术暴论 is a skill attribute, 切骨 is an attribute, 艺术暴论 is a skill
 
-// this information is not available on wiki site, so manually collect
 interface ProtocolSpace {
     name: string,
     cat1: string[],
     cat2: string[],
     cat3: string[],
 }
-const AllSpaces: ProtocolSpace[] = [{
-    name: '枢纽区',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['攻击提升', '灼热伤害提升', '电磁伤害提升', '寒冷伤害提升', '自然伤害提升', '源石技艺提升', '终结技效率提升', '法术伤害提升'],
-    cat3: ['强攻', '压制', '追袭', '粉碎', '巧技', '迸发', '流转', '效益'],
-}, {
-    name: '源石研究园',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['攻击提升', '物理伤害提升', '电磁伤害提升', '寒冷伤害提升', '自然伤害提升', '暴击率提升', '终结技效率提升', '法术伤害提升'],
-    cat3: ['压制', '追袭', '昂扬', '巧技', '附术', '医疗', '切骨', '效益'],
-}, {
-    name: '矿脉源区',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['生命提升', '物理伤害提升', '灼热伤害提升', '寒冷伤害提升', '自然伤害提升', '暴击率提升', '源石技艺提升', '治疗效率提升'],
-    cat3: ['强攻', '压制', '巧技', '残暴', '附术', '迸发', '夜幕', '效益'],
-}, {
-    name: '供能高地',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['攻击提升', '生命提升', '物理伤害提升', '灼热伤害提升', '自然伤害提升', '暴击率提升', '源石技艺提升', '治疗效率提升'],
-    cat3: ['追袭', '粉碎', '昂扬', '残暴', '附术', '医疗', '切骨', '流转'],
-}, {
-    name: '武陵城',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['攻击提升', '生命提升', '电磁伤害提升', '寒冷伤害提升', '暴击率提升', '终结技效率提升', '法术伤害提升', '治疗效率提升'],
-    cat3: ['强攻', '粉碎', '残暴', '医疗', '切骨', '迸发', '夜幕', '流转'],
-}, {
-    name: '清波寨',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['生命提升', '物理伤害提升', '电磁伤害提升', '寒冷伤害提升', '源石技艺提升', '终结技效率提升', '法术伤害提升', '治疗效率提升'],
-    cat3: ['压制', '粉碎', '昂扬', '巧技', '医疗', '切骨', '迸发', '夜幕'],
-}, {
-    name: '首墩',
-    cat1: ['敏捷提升', '力量提升', '意志提升', '智识提升', '主能力提升'],
-    cat2: ['攻击提升', '物理伤害提升', '灼热伤害提升', '电磁伤害提升', '自然伤害提升', '暴击率提升', '终结技效率提升', '法术伤害提升'],
-    cat3: ['强攻', '追袭', '昂扬', '残暴', '附术', '夜幕', '流转', '效益'],
-}];
+const AllSpaces: ProtocolSpace[] = yaml.parse(await fs.readFile('data/space.yml', 'utf-8')).spaces;
 
-// ATTENTION HARDCODE fix naming inconsitency
-const NameIssues: { correct: string, errors: string[] }[] = [
-    { correct: '寒冷伤害提升', errors: ['寒冷伤害'] }, // this is wiki data error, not in game data error
-    { correct: '法术伤害提升', errors: ['法术提升'] },
-    { correct: '源石技艺强度提升', errors: ['源石技艺提升'] },
-    { correct: '终结技充能效率提升', errors: ['终结技效率提升'] },
-];
+const dedup = <T>(e: T, i: number, a: T[]) => a.indexOf(e) == i;
+function validateSpaceData() {
+    const spaceNames: string[] = [];
+    const space1Cat1 = AllSpaces[0].cat1;
+    const allCat2Names: string[] = [];
+    const allCat3Names: string[] = [];
+    for (const space of AllSpaces) {
+        // no duplicate name
+        if (spaceNames.includes(space.name)) {
+            console.log(`essence.ts: duplicate protocol space name ${space.name}`);
+        }
+        spaceNames.push(space.name);
+        // cat1 length 5
+        if (space.cat1.length != 5) {
+            console.log(`essence.ts: space ${space.name} cat1 length not 5: ${space.cat1.join(', ')}`);
+        }
+        // no duplication inside cat1
+        if (space.cat1.length != space.cat1.filter(dedup).length) {
+            console.log(`essence.ts: space ${space.name} cat1 duplicate value: ${space.cat1.join(', ')}`);
+        }
+        // cat1 name ends with 提升
+        if (space.cat1.some(a => !a.endsWith('提升'))) {
+            console.log(`essence.ts: space ${space.name} cat1 have name not ends with 提升? ${space.cat1.join(', ')}`);
+        }
+        // cat1 should be exactly same for all spaces
+        if (space !== AllSpaces[0]) {
+            if (space.cat1.some(a => !space1Cat1.includes(a)) || space1Cat1.some(a => !space.cat1.includes(a))) {
+                console.log(`essence.ts: space ${space.name} cat1 not same as before? ${space.cat1.join(', ')}`);
+            }
+        }
+        // cat2 length 8
+        if (space.cat2.length != 8) {
+            console.log(`essence.ts: space ${space.name} cat2 length not 8: ${space.cat2.join(', ')}`);
+        }
+        // no duplication inside cat2
+        if (space.cat2.length != space.cat2.filter(dedup).length) {
+            console.log(`essence.ts: space ${space.name} cat2 duplicate value: ${space.cat2.join(', ')}`);
+        }
+        // cat2 name ends with 提升
+        if (space.cat2.some(a => !a.endsWith('提升'))) {
+            console.log(`essence.ts: space ${space.name} cat2 have name not ends with 提升? ${space.cat2.join(', ')}`);
+        }
+        // cat3 length 8
+        if (space.cat3.length != 8) {
+            console.log(`essence.ts: space ${space.name} cat3 length not 8: ${space.cat3.join(', ')}`);
+        }
+        // no duplication inside cat3
+        if (space.cat3.length != space.cat3.filter(dedup).length) {
+            console.log(`essence.ts: space ${space.name} cat2 duplicate value: ${space.cat3.join(', ')}`);
+        }
+        // cat3 name length 2
+        if (space.cat3.some(a => a.length != 2)) {
+            console.log(`essence.ts: space ${space.name} cat3 have name not length 2? ${space.cat3.join(', ')}`);
+        }
+        allCat2Names.push(...space.cat2);
+        allCat3Names.push(...space.cat3);
+    }
+
+    // all names in cat2 should appear at least twice
+    const cat2NameSet = allCat2Names.filter(dedup);
+    for (const cat2Name of cat2NameSet) {
+        if (allCat2Names.filter(n => n == cat2Name).length == 1) {
+            console.log(`essence.ts: cat2 name ${cat2Name} only appear once?`);
+        }
+    }
+    // all names in cat3 should appear at least twice
+    const cat3NameSet = allCat3Names.filter(dedup);
+    for (const cat3Name of cat3NameSet) {
+        if (allCat3Names.filter(n => n == cat3Name).length == 1) {
+            console.log(`essence.ts: cat3 name ${cat3Name} only appear once?`);
+        }
+    }
+
+    // no duplicate name between cat1 and cat2, cat2 and cat3
+    if (space1Cat1.some(a => cat2NameSet.includes(a))) {
+        console.log(`essence.ts: duplicate name between cat1 and cat2, cat1=[${space1Cat1.join(', ')}], cat2set=[${cat2NameSet.join(', ')}]`);
+    }
+    if (cat2NameSet.some(a => cat3NameSet.includes(a))) {
+        console.log(`essence.ts: duplicate name between cat2 and cat3, cat2=[${cat2NameSet.join(', ')}], cat3set=[${cat3NameSet.join(', ')}]`);
+    }
+}
+validateSpaceData();
 
 interface WeaponData {
     name: string,
     rarity?: number,
     attributes?: string[],
 }
-const AllWeapons: WeaponData[] = JSON.parse(await fs.readFile('data/weapon.json', 'utf-8'));
+const ReallyAllWeapons: WeaponData[] = JSON.parse(await fs.readFile('data/weapon.json', 'utf-8'));
+// skip rarity not 5 and 6 because they are not used in this program, 
+const AllWeapons = ReallyAllWeapons.filter(w => w.rarity == 5 || w.rarity == 6);
+// remove not attribute strength because they are not used in this program
+for (const weapon of AllWeapons) { weapon.attributes = weapon.attributes.map(a => a.split('·')[0]); }
 
-function validate(log: boolean) {
-    const info = (content: string) => { if (log) { console.log(content); } };
-    const error = (content: string) => { console.log(content); }
+function validateWeaponData() {
+    // after validated space data, validate weapon data against space data
+    const cat1Names = AllSpaces[0].cat1;
+    const cat2Names = AllSpaces.flatMap(s => s.cat2).filter(dedup);
+    const cat3Names = AllSpaces.flatMap(s => s.cat3).filter(dedup);
+    // console.log(cat1Names, cat2Names, cat3Names);
 
-    const allSkillNames: string[] = [];
-    const kindsFromWeapon: [string[], string[], string[]] = [[], [], []];
-    for (const [cat, getAttribute, setAttribute] of [
-        // the set method only happens when successfully get, so no need to check again
-        [1, w => w.attributes?.length ? w.attributes[0] : null, (w, a) => w.attributes[0] = a],
-        // NOTE for 3 star weapons, it only have cat1 and cat3 attributes, so this is checking == 3
-        [2, w => w.attributes?.length == 3 ? w.attributes[1] : null, (w, a) => w.attributes[1] = a],
-        // and this is using index -1
-        [3, w => w.attributes?.length > 1 ? w.attributes.at(-1) : null, (w, a) => w.attributes[w.attributes.length == 2 ? 1 : 2] = a],
-    ] as [number, (w: WeaponData) => string, (w: WeaponData, a: string) => void][]) {
-        for (const weapon of AllWeapons) {
-            let attribute = getAttribute(weapon);
-            if (!attribute) { 
-                continue;
-            } else if (!attribute.includes('·')) {
-                error(`weapon ${weapon.name} attribute ${attribute} is not using ·?`);
-                continue;
-            } else if (attribute.split('·').length != 2) {
-                error(`weapon ${weapon.name} attribute ${attribute} have multiple ·?`);
-                continue;
+    const weaponNames: string[] = [];
+    for (const weapon of AllWeapons) {
+        if (weaponNames.includes(weapon.name)) {
+            console.log(`essence.ts: duplicate weapon name ${weapon.name}`);
+        }
+        weaponNames.push(weapon.name);
+
+        if (weapon.attributes?.length != 3) {
+            console.log(`essence.ts: weapon ${weapon.name} attribute length not 3?`);
+        } else {
+            if (!cat1Names.includes(weapon.attributes[0])) {
+                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 1 ${weapon.attributes[0]}`);
             }
-        
-            let [kind, strength] = attribute.split('·');
-            // fix incorrect attribute kind
-            const issue = NameIssues.find(i => i.errors.includes(kind));
-            if (issue) {
-                info(`fix weapon ${weapon.name} attribute ${attribute} to be ${issue.correct}`);
-                kind = issue.correct;
-                attribute = `${issue.correct}·${strength}`;
-                setAttribute(weapon, attribute);
+            if (!cat2Names.includes(weapon.attributes[1])) {
+                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 2 ${weapon.attributes[1]}`);
             }
-
-            if (!kindsFromWeapon[cat - 1].includes(kind)) {
-                kindsFromWeapon[cat - 1].push(kind);
-            }
-
-            // check data is normal according to current observation
-            if (cat == 1 || cat == 2) {
-                // not important, check for fun
-                if (!kind.endsWith('提升')) {
-                    info(`weapon ${weapon.name} attribute ${attribute} does not end with 提升`);
-                }
-                if (!['大', '中', '小'].includes(strength)) {
-                    info(`weapon ${weapon.name} attribute ${attribute}'s strength part is not using 大中小`);
-                }
-                if (weapon.rarity == 6 && strength != '大') {
-                    info(`weapon ${weapon.name} is ${weapon.rarity} star but attribute ${attribute}'s strength part ${strength} is not 大`);
-                }
-                if (weapon.rarity == 5 && strength != '中') {
-                    info(`weapon ${weapon.name} is ${weapon.rarity} star but attribute ${attribute}'s strength part ${strength} is not 中`);
-                }
-                if (weapon.rarity == 4 && strength != '小') {
-                    info(`weapon ${weapon.name} is ${weapon.rarity} star but attribute ${attribute}'s strength part ${strength} is not 小`);
-                }
-            } else if (cat == 3) {
-                if (kind.length != 2) {
-                    info(`weapon ${weapon.name} attribute ${attribute} is not length 2`);
-                }
-                // collect cat 3 to see whether they will duplicate, will they?
-                // exclude rarity 3, they are really same, ok, rarity 4 also have duplicates
-                if (weapon.rarity != 3 && weapon.rarity != 4) {
-                    if (allSkillNames.includes(strength)) {
-                        info(`weapon ${weapon.name} attribute ${attribute} has duplicate strength`);
-                    } else {
-                        allSkillNames.push(strength);
-                    }
-                }
+            if (!cat3Names.includes(weapon.attributes[2])) {
+                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 3 ${weapon.attributes[2]}`);
             }
         }
     }
-    info(JSON.stringify(kindsFromWeapon));
 
-    const kindsFromSpace: [string[], string[], string[]] = [[], [], []];
-    for (const space of AllSpaces) {
-        if (space.cat1.length != 5) {
-            error(`space ${space.name} cat1 length not 5`);
-        }
-        if (space.cat2.length != 8) {
-            error(`space ${space.name} cat2 length not 8`);
-        }
-        if (space.cat3.length != 8) {
-            error(`space ${space.name} cat3 length not 8`);
-        }
-
-        for (const [cat, names] of [[1, space.cat1], [2, space.cat2], [3, space.cat3]] as [number, string[]][]) {
-            for (let index = 0; index < names.length; index += 1) {
-                const issue = NameIssues.find(i => i.errors.includes(names[index]));
-                if (issue) {
-                    info(`fix space ${space.name} attribute ${names[index]} to be ${issue.correct}`);
-                    names[index] = issue.correct;
-                }
-                if (!kindsFromSpace[cat - 1].includes(names[index])) {
-                    kindsFromSpace[cat - 1].push(names[index]);
-                }
-
-                // a few similar to weapon validation
-                if (cat == 1 || cat == 2) {
-                    if (!names[index].endsWith('提升')) {
-                        info(`space ${space.name} attribute ${names[index]} does not end with 提升`);
-                    }
-                } else if (cat == 3) {
-                    if (names[index].length != 2) {
-                        info(`weapon ${space.name} attribute ${names[index]} is not length 2`);
-                    }
-                }
-            }
-        }
-    }
-    // console.log(kindsFromSpace);
-
-    for (const cat of [1, 2, 3]) {
-        const fromWeapon = kindsFromWeapon[cat - 1];
-        const fromSpace = kindsFromSpace[cat - 1];
-        const fromWeaponButNotFromSpace = fromWeapon.filter(n => !fromSpace.includes(n));
-        if (fromWeaponButNotFromSpace.length) {
-            error(`category ${cat} existing in weapon but not exist in space: ${fromWeaponButNotFromSpace.join(', ')}`);
-        }
-        const fromSpaceButNotFromWeapon = fromSpace.filter(n => !fromWeapon.includes(n));
-        if (fromSpaceButNotFromWeapon.length) {
-            error(`category ${cat} existing in space but not exist in weapon: ${fromSpaceButNotFromWeapon.join(', ')}`);
-        }
-        info(`cat${cat}(${fromWeapon.length}): ${fromWeapon.join(', ')}`);
-    }
-
-    // try check no same name between categories
-    for (const [cat1, cat2] of [[1, 2], [2, 3]]) {
-        const duplicates = kindsFromSpace[cat1 - 1].filter(n => kindsFromSpace[cat2 - 1].includes(n));
-        if (duplicates.length) {
-            error(`names appear in both cat${cat1} and cat${cat2}: ${duplicates.join(', ')}`);
-        }
-    }
-
-    // check all names have appeared multiple times
-    // now after confirm no duplicates between categories, you can 
-    for (const cat of [1, 2, 3]) {
-        const weaponsAllKinds = AllWeapons.flatMap(w => w.attributes ?? []).map(a => a.split('·')[0]);
-        const spaceAllNames = AllSpaces.flatMap(s => [s.cat1, s.cat2, s.cat3].flat());
-        for (const name of kindsFromSpace[cat - 1]) {
-            const count = weaponsAllKinds.filter(n => n == name).length;
-            // ATTENTION HARDCODE this indicates a typo, but sometimes really happen in real data, so hardcode to skip
-            if (count == 1 && !['自然伤害提升', '切骨'].includes(name)) {
-                error(`name ${name} only appear in weapons once`);
-            }
-            const count2 = spaceAllNames.filter(n => n == name).length;
-            if (count2 == 1) {
-                error(`name ${name} only appear in spaces once`);
-            }
-            info(`name ${name} times ${count} + ${count2}`);
-        }
-    }
-
+    // validate level progress
     for (const progress of AllProgress) {
-        const weapon = AllWeapons.find(w => w.name == progress.name);
-        if (!weapon) {
-            error(`unknown weapon name ${progress.name} in progress`);
-            continue;
-        }
-        if (weapon.rarity != 5 && weapon.rarity != 6) {
-            error(`why are you interested in this low rarity weapon ${weapon.name} ${weapon.rarity}?`);
+        if (!AllWeapons.some(w => w.name == progress.name)) {
+            console.log(`essence.ts: unknown weapon name ${progress.name} in progress`);
         }
     }
+    for (const weight of RemainingWeights) {
+        if (!AllWeapons.some(w => w.name != weight.name)) {
+            console.log(`essence.ts: unknown weapon name ${weight.name} in weight config`);
+        }
+        if (AllProgress.some(p => p.name == weight.name)) {
+            console.log(`essence.ts: weapon ${weight.name} is acquired and no need to weight?`);
+        }
+    }
+
+    // other related observations from weapon data but not needed in this program:
+    // - rarity 6 attribute length for cat1 and cat2 is always 大, rarity 5 中, rarity 4 小
+    // - rarity 3 only have 2 attributes, cat1 and cat3, no cat2
+    // - rarity 3 cat 3 skill name are all same
+    // - wiki data have an error that 寒冷伤害提升 is written as 寒冷伤害
+    // - in game data has write 法术伤害提升 as 法术提升 in weapon info, TODO is this fixed?
+    // - in game data has write 源石技艺强度提升 as 源石技艺提升 in space info, TODO this seems fixed?
+    // - in game data has write 终结技充能效率提升 as 终结技效率提升 in space info, TODO this seems fixed?
 }
-validate(false);
+validateWeaponData();
 
 function getCombinations<T>(sequence: T[], length: number): T[][] {
     const result: T[][] = [];
@@ -310,7 +252,6 @@ function getCombinations<T>(sequence: T[], length: number): T[][] {
 }
 
 // frequently used helper functions
-const dedup = <T>(e: T, i: number, a: T[]) => a.indexOf(e) == i;
 const displayAttribute = (a: string) => {
     const a1 = a.endsWith('提升') ? a.substring(0, a.length - 2) : a;
     const a2 = a1.endsWith('伤害') ? a1.substring(0, a1.length - 2) : a1;
@@ -322,53 +263,53 @@ const displayAttribute = (a: string) => {
         .replace('暴击率', '暴击')
 }
 
-// change weapon attribute to only have attribute, strengh is not used in planning
-for (const weapon of AllWeapons) {
-    weapon.attributes = weapon.attributes.map(a => a.split('·')[0]);
-}
-// only interested in 5/6 star weapons
-const notAllWeapons = AllWeapons.filter(w => w.attributes?.length && (w.rarity == 5 || w.rarity == 6));
-// it seems that sort all weapons and display them in order is a good way to find whether a newly acquired essence is fit
-notAllWeapons.sort((w1, w2) => {
-    const p1 = AllProgress.find(p => p.name == w1.name);
-    const p2 = AllProgress.find(p => p.name == w2.name);
-    if (!p1 && p2) { return -1; }
-    if (p1 && !p2) { return 1; }
-    if (w1.attributes[0] != w2.attributes[0]) { return w1.attributes[0].localeCompare(w2.attributes[0]); }
-    if (w1.attributes[1] != w2.attributes[1]) { return w1.attributes[1].localeCompare(w2.attributes[1]); }
-    if (w1.attributes[2] != w2.attributes[2]) { return w1.attributes[2].localeCompare(w2.attributes[2]); }
-    return 0;
-});
-function displayAllWeaponAndProgress() {
-    for (const weapon of notAllWeapons) {
+function displayAllWeapons() {
+    AllWeapons.sort((w1, w2) => {
+        const p1 = AllProgress.find(p => p.name == w1.name);
+        const p2 = AllProgress.find(p => p.name == w2.name);
+        if (!p1 && p2) { return -1; }
+        if (p1 && !p2) { return 1; }
+        if (w1.attributes[0] != w2.attributes[0]) { return w1.attributes[0].localeCompare(w2.attributes[0]); }
+        if (w1.attributes[1] != w2.attributes[1]) { return w1.attributes[1].localeCompare(w2.attributes[1]); }
+        if (w1.attributes[2] != w2.attributes[2]) { return w1.attributes[2].localeCompare(w2.attributes[2]); }
+        return 0;
+    });
+    for (const weapon of AllWeapons) {
         const progress = AllProgress.find(p => p.name == weapon.name);
         const displayProgress = progress ? ` [${progress.progress.join(',')}]` : '';
-        console.log(`${weapon.attributes.map(displayAttribute).join(',')}: ${weapon.name}${displayProgress}`);
+        const displayName = styleText(progress ? (weapon.rarity == 6 ? 'magenta' : 'gray') : weapon.rarity == 6 ? 'red' : 'yellow', weapon.name);
+        console.log(styleText(progress ? 'gray' : 'white', `- ${weapon.attributes.map(displayAttribute).join(',')}: ${displayName}${displayProgress}`));
     }
 }
 
-// display all strategies organized in space-cat3/cat2-cat1 with specific ordering rule
-interface PairResult {
-    spacename: string,
-    attribute: string, // selected attribute in cat2 or cat3
-    cat1Attributes: string[],
-    weapons: WeaponData[], // all weapons in the pair regardless of progress
-    numbers: number[], // numbers later used in sorting
+interface Strategy {
+    space: string,
+    cat1Names: string[],
+    cat2Or3Name: string, // selected cat2 or cat3 attribute
+    weapons: WeaponData[], // all weapons available in the strategy regardless of progress
+    numbers: number[], // see usage, for now only 1 number, but left for future change?
+    combinations: StrategyAttributeCombinations[],
 }
-function score(allProgress: Progress[]): PairResult[] {
-    const notHaveProgress = (w: WeaponData) => !allProgress.some(p => p.name == w.name);
-    const pairs: PairResult[] = [];
+interface StrategyAttributeCombinations {
+    attributes: string, // one string "cat1,cat2,cat3"
+    weapons: { name: string, weight: number }[],
+}
+
+function plan(baseProgress: LevelProgress[]): Strategy[] {
+
+    const strategies: Strategy[] = [];
     for (const space of AllSpaces) {
         // cat2 and cat3 handling only differ in filter weapon part, so can merge them together
         for (const [cat, weapons] of space.cat2.map<[string, WeaponData[]]>(cat2 => [cat2,
-                notAllWeapons.filter(w => space.cat1.includes(w.attributes[0]) && w.attributes[1] == cat2 && space.cat3.includes(w.attributes[2]))])
+                AllWeapons.filter(w => space.cat1.includes(w.attributes[0]) && w.attributes[1] == cat2 && space.cat3.includes(w.attributes[2]))])
             .concat(space.cat3.map(cat3 => [cat3,
-                notAllWeapons.filter(w => space.cat1.includes(w.attributes[0]) && space.cat2.includes(w.attributes[1]) && w.attributes[2] == cat3)])))
+                AllWeapons.filter(w => space.cat1.includes(w.attributes[0]) && space.cat2.includes(w.attributes[1]) && w.attributes[2] == cat3)])))
         {
+            // note weapons may be empty
             // remain 6 first, then remain 5, then progress 6, then progress 5
             weapons.sort((w1, w2) => {
-                const p1 = allProgress.find(p => p.name == w1.name);
-                const p2 = allProgress.find(p => p.name == w2.name);
+                const p1 = baseProgress.find(p => p.name == w1.name);
+                const p2 = baseProgress.find(p => p.name == w2.name);
                 if (!p1 && p2) { return -1; }
                 if (p1 && !p2) { return 1; }
                 if (w1.rarity != w2.rarity) { return w2.rarity - w1.rarity; }
@@ -377,137 +318,163 @@ function score(allProgress: Progress[]): PairResult[] {
             // if cat1 is larger than 3, need to split them
             const cat1Attributes = weapons.map(w => w.attributes[0]).filter(dedup);
             if (cat1Attributes.length <= 3) {
-                pairs.push({ spacename: space.name, attribute: cat, cat1Attributes, weapons, numbers: [] });
+                strategies.push({ space: space.name, cat2Or3Name: cat, cat1Names: cat1Attributes, weapons, numbers: [], combinations: [] });
             } else {
                 // find all length 3 combinations of cat1set
                 for (const combination of getCombinations(cat1Attributes, 3)) {
                     const thisCombinationWeapons = weapons.filter(w => combination.includes(w.attributes[0]));
-                    pairs.push({ spacename: space.name, attribute: cat, cat1Attributes: combination, weapons: thisCombinationWeapons, numbers: [] });
+                    strategies.push({ space: space.name, cat2Or3Name: cat, cat1Names: combination, weapons: thisCombinationWeapons, numbers: [], combinations: [] });
                 }
             }
-
         }
     }
 
-    for (const { weapons, numbers } of pairs) {
+    // the original numbers used in score and display are
+    // - remaining 6 star weapon attribute combination count (completely same attribute weapon count as 1), this is the probability to get essence for 6 star
+    // - reamining 5/6 combination count, probability for 5 star
+    // - total combination count, include 5/6 and include have progress, total probability
+    // - remaining 6 weapon count, and remaining 5/6 weapon count, and total count
+    // and then only sort by first number (prob), then second number (prob5/6)
+    //
+    // according to my usage experience, nearly never happens acquiring higher
+    // level progress essence than existing essence, number include have progress weapon is not important
+    // rarity is not important, my interesting characters is very limited and rarity 6 weapon is very enough
+    // so try new strategy with the new weight mechanism
+    // that only sort by remaining combination count weighted, if 2 weapons have same combination, choose the higher weight
+
+    const notHaveProgress = (w: WeaponData) => !baseProgress.some(p => p.name == w.name);
+    for (const { weapons, numbers, combinations } of strategies) {
         if (!weapons.length) {
-            numbers.push(0, 0, 0, 0, 0, 0);
+            numbers.push(0);
         } else {
-            // probability is number of cat1-2-3 combinations in the weapon set, then devided by 24
-            // e.g. 3 weapons have 3 different cat123 combinations, so they have 3/24 probability,
-            //      if 2 weapons are exactly same, they only have 2 different cat123 combinations, so 2/24
-            // this is more reasonable then the previous weapon count strategy
-
-            // this combination count don't need to care about whether this pair comes from cat2 or cat3
-            // because their cat2/cat3 is same, this does not affect the result combination count
-            const remaining6CombinationCount = weapons.filter(w => w.rarity == 6 && notHaveProgress(w)).map(w => w.attributes.join('-')).filter(dedup).length;
-            const remainingCombinationCount = weapons.filter(notHaveProgress).map(w => w.attributes.join('-')).filter(dedup).length;
-            const totalCombinationCount = weapons.map(w => w.attributes.join('-')).filter(dedup).length;
-            const remaining6Count = weapons.filter(w => w.rarity == 6 && notHaveProgress(w)).length;
-            const remainingCount = weapons.filter(notHaveProgress).length;
-            const totalCount = weapons.length;
-            numbers.push(remaining6CombinationCount, remainingCombinationCount, totalCombinationCount, remaining6Count, remainingCount, totalCount);
+            for (const combination of weapons.filter(notHaveProgress).map(w => w.attributes.join(',')).filter(dedup)) {
+                const weaponAndWeights = weapons.filter(w => w.attributes.join(',') == combination).map(w => ({
+                    name: w.name,
+                    weight: w.rarity == 5 ? 0.25 : (RemainingWeights.find(weight => weight.name == w.name)?.weight ?? 1)
+                }));
+                combinations.push({ attributes: combination, weapons: weaponAndWeights });
+            }
+            numbers.push(combinations.reduce((acc, c) => acc + c.weapons.reduce((acc, w) => Math.max(acc, w.weight), 0), 0));
         }
     }
 
-    // TODO if search for a weapon in process.argv[2], put it at topmost
-    // the core operation of "planning" is set priority of the pairs
-    pairs.sort((p1, p2) => { 
+    // the core operation of "planning" is set priority of the strategies
+    strategies.sort((p1, p2) => {
         // return p2-p1 means larger first, p1-p2 means smaller first,
         // or return negative means p1 before p2, positive means p2 before p1
-        // max prob
+        // score
         if (p1.numbers[0] != p2.numbers[0]) { return p2.numbers[0] - p1.numbers[0]; }
-        // max prob include 5
-        if (p1.numbers[1] != p2.numbers[1]) { return p2.numbers[1] - p1.numbers[1]; }
         // then complete weapon count
         if (p1.weapons.length != p2.weapons.length) { return p2.weapons.length - p1.weapons.length; }
         // normally by space name and attribute
-        if (p1.spacename != p2.spacename) { return p1.spacename.localeCompare(p2.spacename); }
-        if (p1.attribute != p2.attribute) { return p1.attribute.localeCompare(p2.attribute); }
+        if (p1.space != p2.space) { return p1.space.localeCompare(p2.space); }
+        if (p1.cat2Or3Name != p2.cat2Or3Name) { return p1.cat2Or3Name.localeCompare(p2.cat2Or3Name); }
         // last regard as same
         return 0;
     });
-    return pairs;
+    return strategies;
 }
+function displayPlan(baseProgress: LevelProgress[], strategies: Strategy[], top: number = 10, detailIndex: number = 0) {
+    for (const [strategy, strategyIndex] of strategies.slice(0, top).map((s, i) => [s, i] as const)) {
+        const { space, cat2Or3Name, weapons, cat1Names, numbers } = strategy;
+        cat1Names.sort((a1, a2) => AllSpaces[0].cat1.indexOf(a1) - AllSpaces[0].cat1.indexOf(a2));
+        if (!weapons.length) {
+            // no weapon means no cat1
+            console.log(`${space}:${displayAttribute(cat2Or3Name)}: ${styleText('cyan', 'no')}`);
+            continue;
+        }
 
-function displayStategy(pairs: PairResult[], allProgress: Progress[], limit: number = 10) {
-    console.log('------------------------------');
-    for (const [pair, pairIndex] of pairs.map((p, i) => [p, i] as const)) {
-        if (pairIndex >= limit) { break; }
-        const { spacename, attribute, weapons, cat1Attributes, numbers } = pair;
-        if (weapons.length) {
-            cat1Attributes.sort((a1, a2) => AllSpaces[0].cat1.indexOf(a1) - AllSpaces[0].cat1.indexOf(a2));
-            const placeDisplay = styleText('white', `${spacename}:${displayAttribute(attribute)}:${cat1Attributes.map(displayAttribute).join(',')}`);
-            const mainNumberDisplay = styleText('yellow', numbers[0].toString());
-            const numbersDisplay = styleText('gray', 'prob ') + mainNumberDisplay + styleText('gray', `/${numbers[1]}/${numbers[2]}/24 count ${numbers[3]}/${numbers[4]}/${numbers[5]}`);
-            console.log(`${placeDisplay}: ${numbersDisplay}`);
+        const placeDisplay = styleText('white', `${strategyIndex + 1}: ${space}:${displayAttribute(cat2Or3Name)}:${cat1Names.map(displayAttribute).join(',')}`);
+        const scoreDisplay = styleText('cyan', numbers[0].toString());
+        console.log(`${placeDisplay}: ${scoreDisplay}`);
 
-            let sb = '  ';
+        let sb = '  ';
+        for (const weapon of weapons) {
+            const haveProgress = baseProgress.some(p => p.name == weapon.name);
+            sb += styleText(haveProgress ? 'dim' : weapon.rarity == 5 ? 'yellow' : 'red', weapon.name);
+            sb += styleText('gray', `,`);
+        }
+        console.log(sb);
+
+        if (strategyIndex == detailIndex) {
             for (const weapon of weapons) {
-                // rarity gray, progress gray, normal weapon name white, highlight weapon name green
-                const progress = allProgress.find(p => p.name == weapon.name); 
-                sb += styleText(progress ? 'gray' : 'green', weapon.name);
-                sb += styleText(`gray`, `(${weapon.rarity})`);
-                sb += progress ? styleText(`gray`, `[${progress.progress.join(',')}]`) : '';
-                sb += `, `;
+                const progress = baseProgress.find(p => p.name == weapon.name);
+                const displayProgress = progress ? ` [${progress.progress.join(',')}]` : '';
+                console.log(styleText(progress ? 'gray' : 'white', `  - ${weapon.attributes.map(displayAttribute).join(',')}: ${weapon.name}${displayProgress}`));
             }
-            sb = sb.substring(0, sb.length - 2);
-            console.log(sb);
-        } else {
-            // console.log(`${spacename}:${attribute}: no`);
         }
     }
 }
 
-displayAllWeaponAndProgress();
-displayStategy(score(AllProgress), AllProgress, 100);
-
 // total count estimate, seems only can by monte carlo
 // by always choosing the topmost place, and randomly generate 3 essences, display result game count
-function simulate(initialProgress: Progress[]) {
+function simulate(baseProgress: LevelProgress[]) {
     let gameCount = 0;
     let foodCount = 0;
-    const currentProgress = [...initialProgress];
-    while (currentProgress.length != notAllWeapons.length) {
-        const plan = score(currentProgress)[0];
+    const currentProgress = [...baseProgress];
+    while (currentProgress.length != AllWeapons.length) {
+        const strategies = plan(currentProgress)[0];
         gameCount += 1;
         // console.log(`#${gameCount}(${currentProgress.length}/${notAllWeapons.length}): ` +
         //     `goto ${plan.spacename}:${displayAttribute(plan.attribute)}:${plan.cat1Attributes.map(displayAttribute).join(',')}`);
-        const space = AllSpaces.find(s => s.name == plan.spacename);
+        const space = AllSpaces.find(s => s.name == strategies.space);
         // if cat1 does not length 3, filling whatever reamin from remaining cat1s
-        const cat1pool = plan.cat1Attributes.length == 3 ? plan.cat1Attributes
-            : plan.cat1Attributes.concat(...new Array(3 - plan.cat1Attributes.length).fill(0).map(_ => space.cat1.filter(c => !plan.cat1Attributes.includes(c))[0]));
-        const fix2 = space.cat2.includes(plan.attribute);
+        const cat1pool = strategies.cat1Names.length == 3 ? strategies.cat1Names
+            : strategies.cat1Names.concat(...new Array(3 - strategies.cat1Names.length).fill(0).map(_ => space.cat1.filter(c => !strategies.cat1Names.includes(c))[0]));
+        const fix2 = space.cat2.includes(strategies.cat2Or3Name);
         const cat23pool = fix2 ? space.cat3 : space.cat2;
         // console.log(`  cat1pool ${cat1pool} cat23pool ${cat23pool}`);
         let sb = '  ';
         for (const [pullAttribute1, pullAttribute23] of [1, 2, 3].map(_ => [cat1pool[randomInt(3)], cat23pool[randomInt(8)]])) {
-            const ding = notAllWeapons.filter(w => !currentProgress.some(p => p.name == w.name))
+            const ding = AllWeapons.filter(w => !currentProgress.some(p => p.name == w.name))
                 .find(w => w.attributes[0] == pullAttribute1
-                    && w.attributes[1] == (fix2 ? plan.attribute : pullAttribute23)
-                    && w.attributes[2] == (fix2 ? pullAttribute23 : plan.attribute));
+                    && w.attributes[1] == (fix2 ? strategies.cat2Or3Name : pullAttribute23)
+                    && w.attributes[2] == (fix2 ? pullAttribute23 : strategies.cat2Or3Name));
             if (ding) {
                 currentProgress.push({ name: ding.name, progress: [1, 1, 1] });
             } else {
                 foodCount += 1;
             }
-            const displayPull = `${displayAttribute(pullAttribute1)}-${displayAttribute(pullAttribute23)}-${displayAttribute(plan.attribute)}`;
+            const displayPull = `${displayAttribute(pullAttribute1)}-${displayAttribute(pullAttribute23)}-${displayAttribute(strategies.cat2Or3Name)}`;
             const displayDing = ding ? styleText('cyanBright', `!!${ding.name}`) : '';
             sb += `${displayPull}${displayDing}, `;
         }
         sb = sb.substring(0, sb.length - 2);
         // console.log(sb);
-        if (gameCount > 1000) { console.log('>1000??'); displayStategy(score(currentProgress), currentProgress); break; }
+        if (gameCount > 1000) {
+            console.log('>1000??');
+            displayPlan(currentProgress, plan(currentProgress));
+            break;
+        }
     }
     console.log(`game count ${gameCount} food count ${foodCount}`);
     return gameCount;
 }
+function estimateOverallProgress(baseProgress: LevelProgress[], times: number = 100) {
+    let totalGameCount = 0;
+    for (const _ of new Array(times).fill(0)) {
+        totalGameCount += simulate([]);
+    }
+    let remainingTotalGameCount = 0;
+    for (const _ of new Array(times).fill(0)) {
+        remainingTotalGameCount += simulate(baseProgress);
+    }
+    console.log(`avg remain ${remainingTotalGameCount / times}/${totalGameCount / times} = ${remainingTotalGameCount / totalGameCount}`);
+}
 
-// TODO node essence.ts weapon(s) w1,w2,w3 space s1 attribute 附术 limit 10 simulate 100
-// TODO 给武器加个权重，默认1，通行证武器复刻遥遥无期0.25，五星武器0.25，过期专武暂无复刻0.5，想要练的干员专武2，正在刷的武器100
-
-// let totalGameCount = 0;
-// for (const _ of new Array(100).fill(0)) {
-//     totalGameCount += simulate(AllProgress);
-// }
-// console.log(`avg ${totalGameCount / 100}`);
+if (process.argv[2] == 'plan') {
+    const selectedStrategy = +process.argv[3]; // this start from 1 don't forget
+    if (isNaN(selectedStrategy)) {
+        displayPlan(AllProgress, plan(AllProgress));
+    } else {
+        displayPlan(AllProgress, plan(AllProgress), Math.max(10, selectedStrategy), selectedStrategy - 1);
+    }
+} else if (process.argv[2] == 'weapons') {
+    displayAllWeapons();
+} else if (process.argv[2] == 'simulate') {
+    console.log('estimating...');
+    estimateOverallProgress(AllProgress);
+} else {
+    console.log(`USAGE: node essence.ts plan | weapons | simulate`);
+    process.exit(1);
+}
