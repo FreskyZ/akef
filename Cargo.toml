@@ -1,0 +1,25 @@
+[package]
+name = "akef"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "recipe"
+path = "recipe/make-data.rs"
+
+# need apk add musl-dev, I gess that comes from image
+# need apk add pkgconfig openssl-dev, required by some http library for reqwest
+# need apk add openssl-libs-static, required by tokio::main
+# need apk add ?, required by image avif-native to decode avif format data,
+#   you need static library? copy the single libdav1d.a file into /usr/local/lib is enough
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+futures = "0.3"
+image = { version = "0.25", features = ["avif-native"] }
+pinyin = "0.11.0"
+reqwest = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }

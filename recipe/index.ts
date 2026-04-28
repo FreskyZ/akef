@@ -31,12 +31,22 @@ const elements = {
     clearButton: document.querySelector('button#clear') as HTMLButtonElement,
 };
 
-const pagedata = { ...(window as any)['EndfieldRecipes'], icons: (window as any)['EndfieldImages'] } as {
+const pagedata = (window as any)['thepagedata'] as {
     items: ItemData[],
     machines: MachineData[],
     recipes: RecipeData[],
     icons: Record<string, string>,
 };
+// ATTENTION temporary compatibility fix
+for (const item of pagedata.items) { item.id = item.name; }
+for (const machine of pagedata.machines) { machine.id = machine.name; machine.desc = ''; }
+for (const recipe of pagedata.recipes) {
+    recipe.id = recipe.name;
+    recipe.machineId = (recipe as any)['machine'];
+    recipe.ingredients = (recipe as any)['input'].map((i: any) => ({ id: i.name, count: i.count }));
+    recipe.products = (recipe as any)['output'].map((i: any) => ({ id: i.name, count: i.count }));
+}
+pagedata.icons = Object.fromEntries(pagedata.items.map(i => [i.name, (i as any)['icon']]));
 
 function setupNavigationBar() {
     for (const item of pagedata.items) {

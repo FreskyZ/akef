@@ -452,6 +452,7 @@ class Client {
         return result;
     }
 
+    // TODO wait navigation in click? this happens when js load slow and elements are available to click
     public async click(element: spec.script.NodeRemoteValue): Promise<void> {
         this.$try(await this.connection.send('input.performActions', {
             context: this.pageId,
@@ -526,9 +527,17 @@ export async function connect(options: ClientOptions): Promise<Client> {
     const client = new Client(options, sessionInfo);
 
     // cannot open connection, return fail
-    if (!await client.open()) { return null; }
+    if (!await client.open()) {
+        try { await fs.unlink(sessionFile); } catch { /* ignore */ }
+        return null;
+    }
     // cannot get status?, return fail
-    try { await client.driverStatus(); } catch { return null; }
+    try {
+        await client.driverStatus();
+    } catch { 
+        try { await fs.unlink(sessionFile); } catch { /* ignore */ }
+        return null;
+    }
     // final result
     return client;
 }
@@ -547,3 +556,12 @@ export async function connect(options: ClientOptions): Promise<Client> {
 // 
 // await client.close();
 // console.log(logs.map(r => r.trim()).join('\n'));
+
+// // or node repl
+// let browserlib = await import('./browser/index.ts');
+// let logger = { push: v => console.log(v) };
+// let client = await browserlib.connect({ logs: logger });
+// await client.driverStatus(); // check
+// await client.getPages(); // copy page id
+// client.setPageId('');
+// client.getDevToolsFrontEndURL(); // and open devtools frontend url
