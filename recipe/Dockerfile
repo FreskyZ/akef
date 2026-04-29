@@ -1,43 +1,27 @@
-# what do you mean by compiling and running the rust script need to install several packages and one package is missing and you need to build it from source?
-# now that you have a dockerfile to setup build environment, you can build a final result binary and directly use outside?
 
-FROM alpine:3.23.4 AS base
+# docker build --target build --tag akef/recipe-build --build-context project=.. .
+FROM my/rust:1 AS build
 
-RUN <<EORUN
-set -ex
-cat <<'EOCAT' > /etc/apk/repositories
-https://mirrors.aliyun.com/alpine/v3.23/main
-https://mirrors.aliyun.com/alpine/v3.23/community
-EOCAT
-apk update
-# musl-dev I gess comes from image
-# pkgconfig and openssl-dev required by some http library for reqwest
-# openssl-libs-static, required by tokio::main
-# meson ninja gcc nasm: build dav1d from source
-apk add musl-dev pkgconfig openssl-dev openssl-libs-static meson ninja gcc nasm --no-cache
-EORUN
+RUN mkdir /work && mkdir /work/src
+COPY --from=project Cargo.toml Cargo.lock /work
+COPY make-data.rs /work/src/main.rs
 
-# https://code.videolan.org/videolan/dav1d
-ADD dav1d.tar.xz /dav1d
-
-RUN <<EORUN
-set -ex
-cd /dav1d
-mkdir build
-cd build
-meson setup --default-library=static ..
-ninja
-EORUN
-
-FROM my/rust:1 AS main
-
-RUN <<EORUN
+# /usr/local/cargo/registry: cargo download cache, the CARGO_HOME=/usr/local/cargo is written by me in my/rust image
+# if you are developing the script, mount host cache folder to that location, e.g.
+# docker run -it --rm --name akef2 -v ~/cargo-download-cache:/usr/local/cargo/registry -h AKEF2 -w /work akef/recipe-build
+RUN --mount=type=cache,target=/usr/local/cargo/registry <<EORUN
 set -ex
 apk update
 # musl-dev I gess comes from image
 # pkgconfig and openssl-dev required by some http library for reqwest
 # openssl-libs-static, required by tokio::main
 apk add musl-dev pkgconfig openssl-dev openssl-libs-static --no-cache
+cd /work
+cargo build --release
+# result file /work/target/release/akef
 EORUN
 
-COPY --from=base /dav1d/build/src/libdav1d.a /usr/local/lib
+# docker create --name helper1 akef/recipe-build
+# docker cp helper1:/work/target/release/akef make-icon
+# docker rm helper1
+# # this executable file statically links libc? you can run directly on host?

@@ -2,243 +2,280 @@ use std::fs;
 use std::io;
 use std::collections::HashSet;
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures::future::join_all;
-use image::{DynamicImage, ImageReader, ImageFormat};
-use pinyin::ToPinyin;
+use image::{DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
 
-// cargo run --bin recipe
-
-// now you need some native library to process the images,
-// while nodejs is not suitable for this kind of work, so try rust to
-// - download images, process images into shrinked data url
-// - identity bottle and liquid items (hardcode actually), create bottle x liquid items
-// - add pinyin to item names
-// - for now, connect to original make data logic
-
-#[derive(Debug, Deserialize)]
-struct RawItem {
-    name: String,
-    icon: String,
-    desc1: String,
-    desc2: String,
-}
+// read item.json,
+// if icon is url, download, shrink size
+// if icon is coordinate, create a view from decoded input item image,
+// if icon is coordinate, put it in the same coordinate in output item image,
+// if icon was url, assign next available coordinate and put it in output item image
+// create bottle x liquid item if not exist, create icon by overlay and assign coordinate
 
 #[derive(Debug, Deserialize, Serialize)]
-struct LocalItem {
+struct Item {
     name: String,
-    pinyin: String,
     icon: String,
-    desc: (String, String),
-}
-
-async fn process_item(item: RawItem) -> Result<LocalItem, String> {
-
-    if !item.icon.starts_with("url(\"https://") || !item.icon.ends_with(".png\")") {
-        return Err(format!("{}: unknown icon format: {}", item.name, item.icon));
-    }
-
-    let url = &item.icon[5..item.icon.len() - 2];
-    let image_data = reqwest::get(url).await
-        .map_err(|e| format!("{}: failed to download image: {}", item.name, e))?
-        .bytes().await
-        .map_err(|e| format!("{}: failed to get image bytes: {}", item.name, e))?;
-
-    let full_image = ImageReader
-        ::with_format(io::Cursor::new(image_data), ImageFormat::Png)
-        .decode().map_err(|e| format!("{}: failed to decode image: {}", item.name, e))?;
-    // make sure is rgba8 color
-    let full_image = DynamicImage::ImageRgba8(full_image.to_rgba8());
-    // validate dimentions
-    if full_image.width() != 396 || full_image.height() != 396 {
-        return Err(format!("{} has dimensions {}x{}, expected 396x396", item.name, full_image.width(), full_image.height()));
-    }
-    
-    let small_image = full_image.resize(64, 64, image::imageops::FilterType::Lanczos3);
-    let mut image_data_avif: Vec<u8> = Vec::new();
-    small_image
-        .write_to(&mut io::Cursor::new(&mut image_data_avif), ImageFormat::Avif)
-        .map_err(|e| format!("{}: failed to encode as AVIF: {}", item.name, e))?;
-    let data_uri = format!("data:image/avif;base64,{}", STANDARD.encode(image_data_avif));
-    
-    // why are you so inconvenient to skip non pinyin-able characters?
-    let pinyin = item.name.chars().fold(String::new(), |mut acc, c| match c.to_pinyin() {
-        Some(p) => { acc.push_str(p.plain()); acc }
-        None => { acc.push(c); acc }
-    });
-
-    println!("{}({}): {}", item.name, pinyin, data_uri);
-    Ok(LocalItem {
-        name: item.name,
-        pinyin,
-        icon: data_uri,
-        desc: (item.desc1, item.desc2),
-    })
-}
-
-async fn make_items_with_icon() -> Result<()> {
-
-    let raw_original_content = fs::read_to_string("data/items-raw.json")?;
-    let raw_items: Vec<RawItem> = serde_json::from_str(&raw_original_content)?;
-    println!("raw items {}", raw_items.len());
-
-    let existing_items: Vec<LocalItem> = if let Ok(content) = fs::read_to_string("data/items-icon.json") {
-        serde_json::from_str::<Vec<LocalItem>>(&content)?
-    } else {
-        Vec::new()
-    };
-    if !existing_items.is_empty() { println!("existing items {}", existing_items.len()); }
-    let existing_item_names = existing_items.iter().map(|i| i.name.as_str()).collect::<HashSet<_>>();
-    
-    let tasks = raw_items.into_iter()
-        .filter(|item| !existing_item_names.contains(&item.name.as_str()))
-        .map(|item| tokio::spawn(async move { process_item(item).await })).collect::<Vec<_>>();
-    if tasks.is_empty() {
-        println!("no new items, skip");
-        return Ok(());
-    }
-
-    // parallel run
-    let results = join_all(tasks).await;
-
-    let mut new_items = Vec::new();
-    for result in results {
-        match result {
-            Ok(Ok(item)) => new_items.push(item),
-            Ok(Err(process_error)) => eprintln!("{}", process_error),
-            Err(join_error) => eprintln!("✗ Task panicked: {}", join_error),
-        }
-    }
-    println!("new items {}", new_items.len());
-
-    let mut all_items = existing_items;
-    all_items.extend(new_items);
-    fs::write("data/items-icon.json", serde_json::to_string_pretty(&all_items)?)?;
-
-    Ok(())
-}
-
-#[derive(Debug, Serialize)]
-struct KindedItem {
-    name: String,
-    pinyin: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    kind: Option<&'static str>,
-    icon: String,
-    desc: (String, String),
+    kind: Option<String>,
+    version: usize,
+    desc: String,
 }
-const LIQUID_ITEM_NAMES: &[&str] = &[
-    // these are ordered top in wiki in game in industry production category
-    "锦草溶液",
-    "芽针溶液",
-    "液化息壤",
-    "液化重息壤",
-    "壤晶废液",
-    "惰性壤晶废液",
-    "赤铜溶液",
-    "赫铜溶液",
-    "污水",
-    // these are natural resource
-    "清水",
-    "沉积酸",
-];
-const BOTTLE_ITEM_NAMES: &[&str] = &[
-    // these are ordered together in wiki in game in industry production category
-    "紫晶质瓶",
-    "蓝铁瓶",
-    "高晶质瓶",
-    "钢质瓶",
-    "赤铜瓶",
-    "赫铜瓶",
-];
-fn make_items_with_kind() -> Result<()> {
 
-    let new_original_content = fs::read_to_string("data/items-icon.json")?;
-    let local_items: Vec<LocalItem> = serde_json::from_str(&new_original_content)?;
-    let mut new_items = local_items.into_iter().map(|i| KindedItem {
-        name: i.name,
-        pinyin: i.pinyin,
-        kind: None,
-        icon: i.icon,
-        desc: i.desc,
-    }).collect::<Vec<_>>();
+async fn download_image(item: &Item) -> Result<(&Item, DynamicImage)> {
+    let large_image_data = reqwest::get(&item.icon).await?.bytes().await?;
+    let large_image = image::ImageReader::with_format(
+        io::Cursor::new(large_image_data), image::ImageFormat::Png).decode()?;
 
-    for item in &mut new_items {
-        if item.name.ends_with("种子") {
-            item.kind = Some("seed");
+    // make sure is rgba8 color, old code is doing this, not sure whether it is needed for now
+    let large_image = if matches!(large_image, DynamicImage::ImageRgba8(..)) {
+        large_image
+    } else {
+        println!("item {} image is not rgba8 but {:?}", item.name, large_image.color());
+        DynamicImage::ImageRgba8(large_image.to_rgba8())
+    };
+    // validate dimentions
+    if large_image.width() != 396 || large_image.height() != 396 {
+        println!("item {} image is not 396x396 but {}x{}?", item.name, large_image.width(), large_image.height());
+    }
+    // resize, and the work is done here
+    let small_image = large_image.resize(64, 64, image::imageops::FilterType::Lanczos3);
+    Ok((item, small_image))
+}
+
+async fn make_items_with_icon(input_filename: &str, output_filename: &str) -> Result<()> {
+
+    let data_filename = format!("data/{}.json", input_filename);
+    println!("read {}", data_filename);
+    let original_content = fs::read_to_string(data_filename)?;
+    let mut items: Vec<Item> = serde_json::from_str(&original_content)?;
+    println!("items count {}", items.len());
+
+    // borrow checker think the reference to items is send to tokio::spawn and may live
+    // very long exceeds lifetime of this function, so you cannot mutable borrow items here,
+    // and according to 10 years experience fighting with rustc, the answer is like this,
+    // UPDATE: after ask ai, the common answer is clone or arc, and the most correct answer is still this
+    // UPDATE: you can consume split (drain) the vector into 2 halfs according to condition,
+    // and consume the item and return the item in the async function, but I should not allow
+    // borrow checker to raise issue in this can-not-be-more-simple-even-immutable-promise.all-operation
+    let unsound_items: Vec<Item> = Vec::new();
+    unsafe { std::ptr::copy_nonoverlapping(&items as *const _, &unsound_items as *const _ as *mut _, 1) }
+    let unsound_slice = unsound_items.leak::<'static>();
+
+    // 1. collect items to download image
+    // check start with https and ends with .png (will they change this?)
+    let download_tasks = unsound_slice.iter()
+        .filter(|item| item.icon.starts_with("https://") && item.icon.ends_with(".png"))
+        .map(|item| tokio::spawn(download_image(item))).collect::<Vec<_>>();
+    let download_task_count = download_tasks.len();
+    println!("download tasks {}", download_task_count);
+
+    let mut new_images = Vec::new(); // (&item, dynamicimage)[]
+    let download_results = join_all(download_tasks).await;
+    for result in download_results {
+        match result {
+            Ok(Ok(r)) => new_images.push(r),
+            Ok(Err(e)) => println!("{}", e),
+            Err(e) => println!("future join error {}", e),
         }
     }
-
-    for &bottle_item_name in BOTTLE_ITEM_NAMES {
-        if let Some(bottle_item) = new_items.iter_mut().find(|i| i.name == bottle_item_name) {
-            bottle_item.kind = Some("bottle");
-        } else {
-            println!("configured bottle item not found in items: {}", bottle_item_name);
-        };
-    }
-    for &liquid_item_name in LIQUID_ITEM_NAMES {
-        if let Some(liquid_item) = new_items.iter_mut().find(|i| i.name == liquid_item_name) {
-            liquid_item.kind = Some("liquid");
-        } else {
-            println!("configured liquid item not found in items: {}", liquid_item_name);
-        };
+    if new_images.len() != download_task_count {
+        anyhow::bail!("abort because some of the files failed to download");
     }
 
-    for &bottle_item_name in BOTTLE_ITEM_NAMES {
-        let Some(bottle_item) = new_items.iter().find(|i| i.name == bottle_item_name) else { continue };
-        if !bottle_item.icon.starts_with("data:image/avif;base64,") {
-            println!("bottle {} icon not starts with data uri? {}", bottle_item.name, bottle_item.icon);
+    // 2. create view for existing items
+    // create view should take no time compared to download so no async or rayon
+    let image_filename = format!("data/{}.png", input_filename);
+    println!("decode {}", image_filename);
+    let input_item_image = image::open(image_filename)?;
+
+    let mut existing_images_ok = true;
+    let mut existing_images = Vec::new(); // (&item, row, column, subimage)
+    for item in items.iter().filter(|item| !item.icon.starts_with("https://") || !item.icon.ends_with(".png")) {
+        let Some((Ok(row), Ok(column))) = item.icon.split_once(',').map(|(r, c)| (r.parse::<usize>(), c.parse::<usize>())) else {
+            existing_images_ok = false;
+            println!("item {} icon does not look like url but also not look like coordinate? {}", item.name, item.icon);
+            continue;
+        };
+        if (row + 1) * 64 > input_item_image.height() as usize || (column + 1) * 64 > input_item_image.width() as usize {
+            existing_images_ok = false;
+            println!("item {} icon position {},{} exceeds input image dimension {},{}",
+                item.name, row, column, input_item_image.height(), input_item_image.width());
             continue;
         }
-        let bottle_icon_data = STANDARD.decode(&bottle_item.icon[23..])?;
-        let bottle_icon = ImageReader::with_format(io::Cursor::new(bottle_icon_data), ImageFormat::Avif).decode()?;
+        let sub_image = input_item_image.view(/* x */ column as u32 * 64, /* y */ row as u32 * 64, /* w */ 64, /* h */ 64);
+        existing_images.push((item, (row, column), sub_image));
+    }
+    println!("existing images {}", existing_images.len());
+    if !existing_images_ok {
+        anyhow::bail!("abort because some of the items failed to load subimage");
+    }
 
-        for &liquid_item_name in LIQUID_ITEM_NAMES {
-            // by the way, if you want to avoid duplicate work of these and want some parallel, image operations should use rayon not futures
-            let Some(liquid_item) = new_items.iter().find(|i| i.name == liquid_item_name) else { continue };
+    // 3. create filled items
+    let mut new_filled_items = Vec::new(); // (Item, &bottle, &liquid)
+    for bottle_item in items.iter().filter(|item| item.kind.as_deref() == Some("bottle")) {
+        for liquid_item in items.iter().filter(|item| item.kind.as_deref() == Some("liquid")) {
+            let filled_item_name = format!("{} ({})", bottle_item.name, liquid_item.name);
+            if !items.iter().any(|e| e.name == filled_item_name) {
+                new_filled_items.push((Item {
+                    name: filled_item_name,
+                    icon: String::new(),
+                    kind: Some("filled".to_string()),
+                    version: std::cmp::max(bottle_item.version, liquid_item.version),
+                    desc: format!("装有{}的{}。+我问你为什么装有液体的瓶子和原来的瓶子是一个名字，他妈的连描述信息也是一样的？", liquid_item.name, bottle_item.name),
+                }, bottle_item, liquid_item));
+            }
+        }
+    }
+    new_filled_items.sort_by(|i1, i2| i1.0.name.cmp(&i2.0.name));
+    println!("new filled items {}", new_filled_items.len());
 
-            let liquid_icon_data = STANDARD.decode(&liquid_item.icon[23..])?;
-            let liquid_icon = ImageReader::with_format(io::Cursor::new(liquid_icon_data), ImageFormat::Avif).decode()?;
-            let liquid_icon = liquid_icon.resize(32, 32, image::imageops::FilterType::Lanczos3);
-        
-            let mut filled_icon = bottle_icon.clone();
-            image::imageops::overlay(&mut filled_icon, &liquid_icon, 16, 16); // this is not try?
-            let mut filled_icon_data: Vec<u8> = Vec::new();
-            filled_icon.write_to(&mut io::Cursor::new(&mut filled_icon_data), ImageFormat::Avif)?;
-            let data_uri = format!("data:image/avif;base64,{}", STANDARD.encode(filled_icon_data));
-            
-            let filled_name = format!("{} ({})", bottle_item_name, liquid_item_name);
-            new_items.push(KindedItem {
-                pinyin: filled_name.chars().fold(String::new(), |mut acc, c| match c.to_pinyin() {
-                    Some(p) => { acc.push_str(p.plain()); acc }
-                    None => { acc.push(c); acc }
-                }),
-                name: filled_name,
-                icon: data_uri,
-                kind: Some("filled"),
-                desc: (
-                    format!("装有{}的{}。", liquid_item_name, bottle_item_name),
-                    format!("我问你为什么装有液体的瓶子和原来的瓶子是一个名字，他妈的连描述信息也是一样的？"),
-                ),
-            });
+    // 4. assign coordinates to downloaded images and newly created image
+    let mut existing_coordinates = existing_images.iter().map(|&(_, coordinate, _)| coordinate).collect::<HashSet<_>>();
+    if existing_coordinates.len() != existing_images.len() {
+        anyhow::bail!("duplicate coordinates in existing data, when will that happen? lazy to find which is duplicating because I think that will not happen(");
+    }
+    let mut layout_iter = LayoutIter{ next: (0, 0) };
+    let mut new_item_coordinates = Vec::new(); // (cloned item name, coordinate)[], for both downloaded and new filled
+    for (item, _) in &new_images {
+        let mut next_coordinate = layout_iter.next().unwrap(); // unwrap: this iterator does not end
+        while existing_coordinates.contains(&next_coordinate) { next_coordinate = layout_iter.next().unwrap(); }
+        existing_coordinates.insert(next_coordinate);
+        new_item_coordinates.push((item.name.clone(), next_coordinate));
+    }
+    for (item, ..) in &new_filled_items {
+        let mut next_coordinate = layout_iter.next().unwrap();
+        while existing_coordinates.contains(&next_coordinate) { next_coordinate = layout_iter.next().unwrap(); }
+        existing_coordinates.insert(next_coordinate);
+        new_item_coordinates.push((item.name.clone(), next_coordinate));
+    }
+
+    // 5. copy them into output image
+    let total_item_count = items.len() + new_filled_items.len();
+    // grid width is always the minimum square size to hold this many items
+    let grid_width = (1..).find(|i| i * i >= total_item_count).unwrap();
+    // grid height may be less if the last row is not filled (item count reaches (n-1)^2, but does not reach (n-1)^2+n-1)
+    let grid_height = if grid_width * (grid_width - 1) >= total_item_count { grid_width - 1 } else { grid_width };
+    // // by the way, the result image is currently abount 160kb, for comparison, the previous separated data uri approach uses >500kb
+    let mut output_item_image = image::RgbaImage::new(grid_width as u32 * 64, grid_height as u32 * 64);
+    println!("output image size {}x{}", output_item_image.width(), output_item_image.height());
+
+    for (_, (row, column), image_view) in &existing_images {
+        // &**: first *: from for-in&, second *: SubImage as Deref returns SubImageInner, &: overlay expects a reference to GenericImageView
+        image::imageops::overlay(&mut output_item_image, &**image_view, /* x */ *column as i64 * 64, /* y */ *row as i64 * 64);
+    }
+    // this image is owning DynamicImage compare to previous array
+    for (item, image) in &new_images {
+        let &(_, (row, column)) = new_item_coordinates.iter().find(|(n, ..)| n == &item.name).unwrap();
+        println!("item {} assign coordinate {},{}", item.name, row, column);
+        image::imageops::overlay(&mut output_item_image, image, /* x */ column as i64 * 64, /* y */ row as i64 * 64);
+    }
+    // this item is owning Item compare to previous arrays
+    for (item, bottle_item, liquid_item) in &new_filled_items {
+        let &(_, (row, column)) = new_item_coordinates.iter().find(|(n, ..)| n == &item.name).unwrap();
+        println!("item {} assign coordinate {},{}", item.name, row, column);
+        // copy bottle item into output image
+        if let Some((_, _, image_view)) = existing_images.iter().find(|(item, ..)| item.name == bottle_item.name) {
+            image::imageops::overlay(&mut output_item_image, &**image_view, /* x */ column as i64 * 64, /* y */ row as i64 * 64);
+        } else if let Some((_, image)) = new_images.iter().find(|(item, ..)| item.name == bottle_item.name) {
+            image::imageops::overlay(&mut output_item_image, image, /* x */ column as i64 * 64, /* y */ row as i64 * 64);
+        } else {
+            anyhow::bail!("why is item {}'s bottle item {} not existing in both new images and existing images?", item.name, bottle_item.name)
+        }
+        // find liquid item, shrink it and copy into output image
+        if let Some((_, _, image_view)) = existing_images.iter().find(|(item, ..)| item.name == liquid_item.name) {
+            let owned_image = DynamicImage::ImageRgba8(image_view.to_image());
+            image::imageops::overlay(
+                &mut output_item_image,
+                &owned_image.resize(32, 32, image::imageops::FilterType::Lanczos3),
+                /* x */ column as i64 * 64 + 16,
+                /* y */ row as i64 * 64 + 16);
+        } else if let Some((_, image)) = new_images.iter().find(|(item, ..)| item.name == liquid_item.name) {
+            image::imageops::overlay(
+                &mut output_item_image,
+                &image.resize(32, 32, image::imageops::FilterType::Lanczos3),
+                /* x */ column as i64 * 64 + 16,
+                /* y */ row as i64 * 64 + 16);
+        } else {
+            anyhow::bail!("why is item {}'s liquid item {} not existing in both new images and existing images?", item.name, liquid_item.name)
         }
     }
 
-    fs::write("data/items-kind.json", serde_json::to_string_pretty(&new_items)?)?;
+    let new_filled_items = new_filled_items.into_iter().map(|(item, ..)| item).collect::<Vec<_>>();
+    items.extend(new_filled_items);
+    // why is this lifetime error?
+    // items.sort_by_key(|item| (-(item.version as isize), item.name.as_str()));
+    // version desc, filled last, then by name asc
+    items.sort_by(|i1, i2| i2.version.cmp(&i1.version).then(match (&i1.kind, &i2.kind) {
+        (Some(k1), Some(k2)) if k1 == "filled" && k2 == "filled" => std::cmp::Ordering::Equal,
+        (Some(k1), _) if k1 == "filled" => std::cmp::Ordering::Greater,
+        (_, Some(k2)) if k2 == "filled" => std::cmp::Ordering::Less,
+        _ => std::cmp::Ordering::Equal,
+    }).then(i1.name.cmp(&i2.name)));
+
+    for item in &mut items {
+        let Some((_, (row, column))) = new_item_coordinates.iter().find(|(n, _)| n == &item.name) else { continue };
+        item.icon = format!("{},{}", row, column);
+    }
+
+    println!("writing data/{n}.json, data/{n}.png and data/{n}.avif", n=output_filename);
+    output_item_image.save(format!("data/{}.png", output_filename))?;
+    output_item_image.save(format!("data/{}.avif", output_filename))?;
+    fs::write(format!("data/{}.json", output_filename), serde_json::to_string_pretty(&items)?)?;
+
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    if std::env::args().any(|v| v == "icon") {
-        make_items_with_icon().await?;
-    } else if std::env::args().any(|v| v == "kind") {
-        make_items_with_kind()?;
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.len() == 2 {
+        make_items_with_icon(&args[1], &args[1]).await?;
+    } else if args.len() == 3 {
+        make_items_with_icon(&args[1], &args[2]).await?;
     } else {
-        println!("USAGE: icon or kind");
+        println!("USAGE: make-icon INPUTNAME [OUTPUTNAME]");
     }
-
     Ok(())
+}
+
+struct LayoutIter {
+    // next coordinate (row, column)
+    // row start from top start from 0, column start from left start from 0
+    // // use next not last because you have no easy way to represent initial state
+    next: (usize, usize),
+}
+impl Iterator for LayoutIter {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let prev = self.next;
+        // special case at both bottom and right side, need to switch to next right side
+        if prev.0 == prev.1 {
+            self.next = (0, prev.1 + 1);
+        // special case at bottom of right side, need to switch to bottom side
+        } else if prev.0 + 1 == prev.1 {
+            self.next = (prev.0 + 1, 0);
+        // if coordinate is at right side, increase row
+        } else if prev.1 > prev.0 {
+            self.next = (prev.0 + 1, prev.1);
+        // if coordinate is at bottom side, increase column
+        } else {
+            self.next = (prev.0, prev.1 + 1);
+        }
+        Some(prev)
+    }
+}
+#[cfg(test)]
+#[test]
+fn test_layout_iter() {
+    let iter = LayoutIter{ next: (0, 0) };
+    assert_eq!(iter.take(16).collect::<Vec<_>>(), vec![
+        (0, 0),
+        (0, 1), /* <right, bottom> */ (1, 0), (1, 1),
+        (0, 2), (1, 2), /* <right, bottom> */ (2, 0), (2, 1), (2, 2),
+        (0, 3), (1, 3), (2, 3), /* <right, bottom> */ (3, 0), (3, 1), (3, 2), (3, 3),
+    ]);
 }
