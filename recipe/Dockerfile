@@ -4,7 +4,7 @@ FROM my/rust:1 AS build
 
 RUN mkdir /work && mkdir /work/src
 COPY --from=project Cargo.toml Cargo.lock /work
-COPY make-data.rs /work/src/main.rs
+COPY make-icon.rs /work/src/main.rs
 
 # /usr/local/cargo/registry: cargo download cache, the CARGO_HOME=/usr/local/cargo is written by me in my/rust image
 # if you are developing the script, mount host cache folder to that location, e.g.
