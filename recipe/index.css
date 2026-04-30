@@ -17,8 +17,12 @@ header > span:first-child {
     font-size: 18px;
 }
 /* subtitle */
-header > span:last-child {
+header > span:nth-child(2) {
     font-size: 12px;
+}
+/* github icon */
+header > a:last-child {
+    margin-left: 4px;
 }
 
 /* nav */
@@ -94,6 +98,10 @@ nav li.active:hover {
     background: linear-gradient(to right, var(--highlight-color) 0, var(--highlight-color) 4px, #ddd 8px, #ddd 100%);
 }
 nav li > img {
+    padding: 4px;
+    grid-area: 1/1/4/1;
+}
+nav li > div.image {
     padding: 4px;
     grid-area: 1/1/4/1;
 }
@@ -212,6 +220,22 @@ div.panel > div.item-node:not(.main-item-node) > img {
 }
 div.panel > div.item-node > img.highlight,
 div.panel > div.main-item-node > img {
+    border: 2px solid var(--highlight-color);
+    padding: 2px;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+}
+div.panel > div.item-node > div.image {
+    grid-area: 1/2/1/2;
+    padding: 3.5px; /* why does this need 3.5px? */
+    border-radius: 4px;
+    background-color: #d8d8d8;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+}
+div.panel > div.item-node:not(.main-item-node) > div.image {
+    cursor: pointer;
+}
+div.panel > div.item-node > div.image.highlight,
+div.panel > div.main-item-node > div.image {
     border: 2px solid var(--highlight-color);
     padding: 2px;
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
