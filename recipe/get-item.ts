@@ -1,4 +1,4 @@
-import npfs, { read } from 'node:fs';
+import npfs from 'node:fs';
 import fs from 'node:fs/promises';
 import readline from 'node:readline/promises';
 import { connect, delay } from '../browser/index.ts';
@@ -44,7 +44,7 @@ interface Item {
     version: number,
     desc: string,
 }
-const items = JSON.parse(await fs.readFile('data/items.json', 'utf-8')) as Item[];
+const items = JSON.parse(await fs.readFile('data/item.json', 'utf-8')) as Item[];
 
 async function getItemsForCategory(categoryName: string) {
     console.log(`get items for ${categoryName}`);
@@ -207,7 +207,16 @@ items.sort((i1, i2) => {
         return i1.name.localeCompare(i2.name);
     }
 });
-await fs.writeFile('data/items.json', JSON.stringify(items, undefined, 2));
+
+// format the json file for easier human read and edit
+let itemFileContent = '[\n';
+for (const { name, icon, kind, version, desc } of items) {
+    // fix property order in display
+    itemFileContent += JSON.stringify({ name, icon, kind, version, desc }) + ',\n';
+}
+itemFileContent = itemFileContent.substring(0, itemFileContent.length - 2);
+itemFileContent += '\n]\n';
+await fs.writeFile('data/item.json', itemFileContent);
 
 await client.close(); // ({ drop: true })
 npfs.closeSync(logfile);

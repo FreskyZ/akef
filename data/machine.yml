@@ -1,0 +1,25 @@
+# only load recipes for machines with automatic recipe
+# not sure how to determine machine have automatic recipe?
+# but the actual amount is few for now, so manually configure the list
+
+machines:
+  # 种田
+  - { name: 采种机, power: 10, size: [5, 5] }
+  - { name: 种植机, power: 20, size: [5, 5] }
+  # 3x3小机器
+  - { name: 精炼炉, power: 5, size: [3, 3] }
+  - { name: 粉碎机, power: 5, size: [3, 3] }
+  - { name: 塑形机, power: 10, size: [3, 3] }
+  - { name: 配件机, power: 20, size: [3, 3] }
+  - { name: 废水处理机, power: 50, size: [3, 3] }
+  # 4x6大机器
+  - { name: 灌装机, power: 20, size: [4, 6] }
+  - { name: 封装机, power: 20, size: [4, 6] }
+  - { name: 拆解机, power: 20, size: [4, 6] }
+  - { name: 装备原件机, power: 10, size: [4, 6] }
+  - { name: 研磨机, power: 50, size: [4, 6] }
+  # 武陵大机器
+  - { name: 反应池, power: 50, size: [5, 5] }
+  - { name: 提纯机, power: 50, size: [5, 5] }
+  - { name: 天有洪炉, power: 50, size: [5, 5] }
+  - { name: 扩容反应池, power: 100, size: [5, 6] }

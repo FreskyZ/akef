@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::collections::HashSet;
@@ -212,6 +213,9 @@ async fn make_items_with_icon(input_filename: &str, output_filename: &str) -> Re
         (Some(k1), _) if k1 == "filled" => std::cmp::Ordering::Greater,
         (_, Some(k2)) if k2 == "filled" => std::cmp::Ordering::Less,
         _ => std::cmp::Ordering::Equal,
+    // TODO rust string comparing default compare by &[u8], which is not same as nodejs default code point sequence compare
+    // for now the execution order of nodejs code and rust code is fixed so always produce same order after same operation,
+    // but fix the difference should be better
     }).then(i1.name.cmp(&i2.name)));
 
     for item in &mut items {
@@ -222,7 +226,16 @@ async fn make_items_with_icon(input_filename: &str, output_filename: &str) -> Re
     println!("writing data/{n}.json, data/{n}.png and data/{n}.avif", n=output_filename);
     output_item_image.save(format!("data/{}.png", output_filename))?;
     output_item_image.save(format!("data/{}.avif", output_filename))?;
-    fs::write(format!("data/{}.json", output_filename), serde_json::to_string_pretty(&items)?)?;
+
+    let mut json_content_builder = String::new();
+    json_content_builder.push_str("[\n");
+    for item in &items {
+        write!(&mut json_content_builder, "{},\n", serde_json::to_string(item)?)?;
+    }
+    json_content_builder.pop();
+    json_content_builder.pop();
+    json_content_builder.push_str("\n]\n");
+    fs::write(format!("data/{}.json", output_filename), json_content_builder)?;
 
     Ok(())
 }
