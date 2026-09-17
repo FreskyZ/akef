@@ -19,7 +19,7 @@ COPY make-icon.rs /work/src/main.rs
 
 # /usr/local/cargo/registry: cargo download cache, the CARGO_HOME=/usr/local/cargo is written by me in my/rust image
 # if you are developing the script, mount host cache folder to that location, e.g.
-# docker run -it --rm --name akef2 -v ~/cargo-download-cache:/usr/local/cargo/registry -h AKEF2 -w /work akef/recipe-build
+# docker run -it --rm --name akef2 -v ./data:/work/data -v ~/cargo-build-cache:/work/target -v ~/cargo-download-cache:/usr/local/cargo/registry -h AKEF2 -w /work akef/recipe-build
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/work/target <<EORUN
 set -ex
 cd /work

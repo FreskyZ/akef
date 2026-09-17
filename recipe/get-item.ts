@@ -40,7 +40,7 @@ const BottleItemNames = [
 interface Item {
     name: string,
     icon: string,
-    kind?: 'seed' | 'liquid' | 'bottle' | 'filled',
+    kind?: 'seed' | 'liquid' | 'bottle',
     version: number,
     desc: string,
 }
@@ -197,12 +197,10 @@ if (LiquidItemNames.some(n => !items.some(i => i.name == n))) {
 if (BottleItemNames.some(n => !items.some(i => i.name == n))) {
     console.log(`unknown item name in configured bottle item names`);
 }
-// sort by version desc, then filled last, then name asc
+// sort by version desc, then name asc
 items.sort((i1, i2) => {
     if (i1.version != i2.version) {
         return i2.version - i1.version;
-    } else if (i1.kind != i2.kind && (i1.kind == 'filled' || i2.kind == 'filled')) {
-        return i1.kind == 'filled' ? 1 : -1;
     } else {
         return i1.name.localeCompare(i2.name);
     }

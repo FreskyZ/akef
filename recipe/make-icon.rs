@@ -240,6 +240,40 @@ async fn make_items_with_icon(input_filename: &str, output_filename: &str) -> Re
     Ok(())
 }
 
+// ATTENTION TEMP
+// reassign coordinates after remove filled items
+async fn fix_coordinates() -> Result<()> {
+
+    let original_content = fs::read_to_string("data/item.json")?;
+    let mut items: Vec<Item> = serde_json::from_str(&original_content)?;
+    println!("items count {}", items.len());
+
+    let mut coordinates = Vec::new();
+    for item in &mut items {
+        let Some((Ok(row), Ok(column))) = item.icon.split_once(',').map(|(r, c)| (r.parse::<usize>(), c.parse::<usize>())) else {
+            println!("item {} icon coordinate parse failure? {}", item.name, item.icon);
+            continue;
+        };
+        coordinates.push((item, (row, column)));
+    }
+    coordinates.sort_by_key(|(_, c)| *c);
+    for ((item, _), (row, column)) in coordinates.into_iter().zip(LayoutIter{ next: (0, 0) }) {
+        item.icon = format!("{},{}", row, column);
+    }
+    
+    let mut json_content_builder = String::new();
+    json_content_builder.push_str("[\n");
+    for item in &items {
+        write!(&mut json_content_builder, "{},\n", serde_json::to_string(item)?)?;
+    }
+    json_content_builder.pop();
+    json_content_builder.pop();
+    json_content_builder.push_str("\n]\n");
+    fs::write("data/item-updated.json", json_content_builder)?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
 
@@ -249,7 +283,8 @@ async fn main() -> Result<()> {
     } else if args.len() == 3 {
         make_items_with_icon(&args[1], &args[2]).await?;
     } else {
-        println!("USAGE: make-icon INPUTNAME [OUTPUTNAME]");
+        fix_coordinates().await?;
+        // println!("USAGE: make-icon INPUTNAME [OUTPUTNAME]");
     }
     Ok(())
 }

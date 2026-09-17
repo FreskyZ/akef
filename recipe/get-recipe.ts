@@ -65,6 +65,80 @@ function isRecipeSame(r1: Recipe, r2: Recipe) {
     return true;
 }
 
+// this should happen before check whether it is new isrecipesame
+function mergeFilledItem(recipe: Recipe) {
+    const display = `${recipe.machine},${recipe.time}s, ${recipe.inputs
+        .map(i => `${i.name}x${i.count}`).join('+')} => ${recipe.outputs.map(i => `${i.name}x${i.count}`).join('+')}`;
+
+    // merge liquid into bottle
+    // check all count = 0 only happen when 2 items and nonezero is bottle and zero is liquid
+    // UPDATE has count = 3, in that case, the non zero items must contains exactly one bottle
+    if (recipe.inputs.some(i => i.count == 0)) {
+        const zeroItemName = recipe.inputs.find(i => i.count == 0).name;
+        const zeroItem = items.find(i => i.name == zeroItemName);
+        if (zeroItem.kind != 'liquid') {
+            console.log(`recipe ${display} looks like filled bottle but zero item is not liquid?`); return;
+        }
+        if (recipe.inputs.length == 2) {
+            const nonZeroItemCount = recipe.inputs.find(i => i.count != 0);
+            if (!nonZeroItemCount) {
+                console.log(`recipe ${display} has both input with count 0?`); return;
+            }
+            const nonZeroItem = items.find(i => i.name == nonZeroItemCount.name);
+            if (nonZeroItem.kind != 'bottle') {
+                console.log(`recipe ${display} looks like filled bottle but non zero item is not bottle?`); return;
+            }
+            recipe.inputs = [{ name: `${nonZeroItem.name} (${zeroItemName})`, count: nonZeroItemCount.count }];
+            console.log(`recipe ${display} fix input to be ${recipe.inputs[0].name}x${recipe.inputs[0].count}`);
+        } else if (recipe.inputs.length > 2) {
+            const bottleItemCounts = recipe.inputs.filter(i => i.count != 0
+                && items.some(item => item.name == i.name && item.kind == 'bottle'));
+            if (bottleItemCounts.length != 1) {
+                console.log(`recipe ${display} looks like filled bottle but no exactly 1 non zero item with kind=bottle?`); return;
+            }
+            // NOTE not completely reverse condition, the zero item still need to be filtered out
+            recipe.inputs = recipe.inputs.filter(i => i.count != 0 && !items.some(item => item.name == i.name
+                && item.kind == 'bottle')).concat([{ name: `${bottleItemCounts[0].name} (${zeroItemName})`, count: bottleItemCounts[0].count }]);
+            recipe.inputs.sort((i1, i2) => i1.name.localeCompare(i2.name));
+            console.log(`recipe ${display} fix input to be ${recipe.inputs[0].name}x${recipe.inputs[0].count}`);
+        } else {
+            console.log(`recipe ${display} looks like filled bottle but input count is not 1?`); return;
+        }
+    }
+    if (recipe.outputs.some(i => i.count == 0)) {
+        const zeroItemName = recipe.outputs.find(i => i.count == 0).name;
+        const zeroItem = items.find(i => i.name == zeroItemName);
+        if (zeroItem.kind != 'liquid') {
+            console.log(`recipe ${display} looks like filled bottle but zero item is not liquid?`); return;
+        }
+        if (recipe.outputs.length == 2) {
+            const nonZeroItemCount = recipe.outputs.find(i => i.count != 0);
+            if (!nonZeroItemCount) {
+                console.log(`recipe ${display} has both output with count 0?`); return;
+            }
+            const nonZeroItem = items.find(i => i.name == nonZeroItemCount.name);
+            if (nonZeroItem.kind != 'bottle') {
+                console.log(`recipe ${display} looks like filled bottle but non zero item is not bottle?`); return;
+            }
+            recipe.outputs = [{ name: `${nonZeroItem.name} (${zeroItemName})`, count: nonZeroItemCount.count }];
+            console.log(`recipe ${display} fix output to be ${recipe.outputs[0].name}x${recipe.outputs[0].count}`);
+        } else if (recipe.outputs.length > 2) {
+            const bottleItemCounts = recipe.outputs.filter(i => i.count != 0
+                && items.some(item => item.name == i.name && item.kind == 'bottle'));
+            if (bottleItemCounts.length != 1) {
+                console.log(`recipe ${display} looks like filled bottle but no exactly 1 non zero item with kind=bottle?`); return;
+            }
+            // NOTE not completely reverse condition, the zero item still need to be filtered out
+            recipe.outputs = recipe.outputs.filter(i => i.count != 0 && !items.some(item => item.name == i.name
+                && item.kind == 'bottle')).concat([{ name: `${bottleItemCounts[0].name} (${zeroItemName})`, count: bottleItemCounts[0].count }]);
+            recipe.outputs.sort((i1, i2) => i1.name.localeCompare(i2.name));
+            console.log(`recipe ${display} fix output to be ${recipe.outputs[0].name}x${recipe.outputs[0].count}`);
+        } else {
+            console.log(`recipe ${display} looks like filled bottle but output count is not 1?`); return;
+        }
+    }
+}
+
 async function getRecipesForMachine(machineName: string) {
     console.log(`get recipes for machine ${machineName}`);
 
@@ -243,6 +317,8 @@ async function getRecipesForMachine(machineName: string) {
         // NOTE output is empty is correct for 污水处理 for now
 
         const newRecipe: Recipe = { name: 'unknown', time, inputs, outputs, machine: machineName };
+        mergeFilledItem(newRecipe);
+
         if (!recipes.some(r => isRecipeSame(r, newRecipe))) {
             newRecipeCount += 1;
             recipes.push(newRecipe);
@@ -264,6 +340,9 @@ for (const recipe of recipes) {
     const display = `${recipe.machine},${recipe.time}s, ${recipe.inputs
         .map(i => `${i.name}x${i.count}`).join('+')} => ${recipe.outputs.map(i => `${i.name}x${i.count}`).join('+')}`;
 
+    // ATTENTION if you want to change logicial identifiers of recipe (machine + input + output)
+    // that should happen in the collect function not here, or else the isRecipeSame to determine whether it is new recipe won't work correctly
+
     // validate item name
     const invalidItemNames = recipe.inputs.filter(input => !items.some(item =>
         input.name == item.name)).concat(recipe.outputs.filter(output => !items.some(item => output.name == item.name)));
@@ -272,68 +351,6 @@ for (const recipe of recipes) {
         continue;
     }
 
-    // merge liquid into bottle
-    // check all count = 0 only happen when 2 items and nonezero is bottle and zero is liquid
-    // UPDATE has count = 3, in that case, the non zero items must contains exactly one bottle
-    if (recipe.inputs.some(i => i.count == 0)) {
-        const zeroItemName = recipe.inputs.find(i => i.count == 0).name;
-        const zeroItem = items.find(i => i.name == zeroItemName);
-        if (zeroItem.kind != 'liquid') {
-            console.log(`recipe ${display} looks like filled bottle but zero item is not liquid?`); continue;
-        }
-        if (recipe.inputs.length == 2) {
-            const nonZeroItemCount = recipe.inputs.find(i => i.count != 0);
-            if (!nonZeroItemCount) {
-                console.log(`recipe ${display} has both input with count 0?`); continue;
-            }
-            const nonZeroItem = items.find(i => i.name == nonZeroItemCount.name);
-            if (nonZeroItem.kind != 'bottle') {
-                console.log(`recipe ${display} looks like filled bottle but non zero item is not bottle?`); continue;
-            }
-            recipe.inputs = [{ name: `${nonZeroItem.name} (${zeroItemName})`, count: nonZeroItemCount.count }];
-            console.log(`recipe ${display} fix input to be ${recipe.inputs[0].name}x${recipe.inputs[0].count}`);
-        } else if (recipe.inputs.length > 2) {
-            const bottleItemCounts = recipe.inputs.filter(i => i.count != 0
-                && items.find(item => item.name == i.name && item.kind == 'bottle'));
-            if (bottleItemCounts.length != 1) {
-                console.log(`recipe ${display} looks like filled bottle but no exactly 1 non zero item with kind=bottle?`); continue;
-            }
-            recipe.inputs = [{ name: `${bottleItemCounts[0].name} (${zeroItemName})`, count: bottleItemCounts[0].count }];
-            console.log(`recipe ${display} fix input to be ${recipe.inputs[0].name}x${recipe.inputs[0].count}`);
-        } else {
-            console.log(`recipe ${display} looks like filled bottle but input count is not 1?`); continue;
-        }
-    }
-    if (recipe.outputs.some(i => i.count == 0)) {
-        const zeroItemName = recipe.outputs.find(i => i.count == 0).name;
-        const zeroItem = items.find(i => i.name == zeroItemName);
-        if (zeroItem.kind != 'liquid') {
-            console.log(`recipe ${display} looks like filled bottle but zero item is not liquid?`); continue;
-        }
-        if (recipe.outputs.length == 2) {
-            const nonZeroItemCount = recipe.outputs.find(i => i.count != 0);
-            if (!nonZeroItemCount) {
-                console.log(`recipe ${display} has both output with count 0?`); continue;
-            }
-            const nonZeroItem = items.find(i => i.name == nonZeroItemCount.name);
-            if (nonZeroItem.kind != 'bottle') {
-                console.log(`recipe ${display} looks like filled bottle but non zero item is not bottle?`); continue;
-            }
-            recipe.outputs = [{ name: `${nonZeroItem.name} (${zeroItemName})`, count: nonZeroItemCount.count }];
-            console.log(`recipe ${display} fix output to be ${recipe.outputs[0].name}x${recipe.outputs[0].count}`);
-        } else if (recipe.outputs.length > 2) {
-            const bottleItemCounts = recipe.outputs.filter(i => i.count != 0
-                && items.find(item => item.name == i.name && item.kind == 'bottle'));
-            if (bottleItemCounts.length != 1) {
-                console.log(`recipe ${display} looks like filled bottle but no exactly 1 non zero item with kind=bottle?`); continue;
-            }
-            recipe.outputs = [{ name: `${bottleItemCounts[0].name} (${zeroItemName})`, count: bottleItemCounts[0].count }];
-            console.log(`recipe ${display} fix output to be ${recipe.outputs[0].name}x${recipe.outputs[0].count}`);
-        } else {
-            console.log(`recipe ${display} looks like filled bottle but output count is not 1?`); continue;
-        }
-    }
-    
     // mark kind=pour, they are excluded in some logic
     if (recipe.inputs.length == 1 && recipe.outputs.length == 2
         && items.some(i => i.name == recipe.inputs[0].name && i.kind == 'filled')

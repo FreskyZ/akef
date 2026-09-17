@@ -5,6 +5,7 @@
   "scripts": {},
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "chalk-template": "^1.1.2",
     "dayjs": "^1.11.20",
     "typescript": "^6.0.3",
     "yaml": "^2.8.3"
