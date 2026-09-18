@@ -5,91 +5,40 @@ import yaml from 'yaml';
 
 // 基质规划
 
-// my current in game progress
-// NOTE currently the level progress is not used, I'm not ocr battle result
-// to find newly acquired level is above existing level progress, but this is
-// actually interesting history of my real game progress, so keep them here
-// beside git blame this, also git blame https://github.com/FreskyZ/small/blob/a34905b6e1c38123f/endfield/sanity/essence.ts
-interface LevelProgress {
-    name: string,
-    progress: [number, number, number],
-}
-const AllProgress: LevelProgress[] = [
-    { name: '宏愿', progress: [3, 2, 2] },
-    { name: '遗忘', progress: [2, 1, 1] },
-    { name: 'J.E.T.', progress: [2, 1, 1] },
-    { name: '大雷斑', progress: [1, 1, 2] },
-    { name: '沧溟星梦', progress: [1, 1, 2] },
-    { name: '熔铸火焰', progress: [2, 1, 2] },
-    { name: '钢铁余音', progress: [2, 1, 2] },
-    { name: '十二问', progress: [3, 1, 1] },
-    { name: '作品：众生', progress: [1, 1, 1] },
-    { name: '白夜新星', progress: [1, 1, 1] },
-    { name: '热熔切割器', progress: [1, 1, 1] },
-    { name: 'O.B.J.尖峰', progress: [3, 1, 1] },
-    { name: '骁勇', progress: [1, 2, 1] },
-    { name: '显赫声名', progress: [1, 1, 1] },
-    { name: 'O.B.J.迅极', progress: [1, 1, 1] },
-    { name: '探骊', progress: [1, 1, 1] },
-    { name: '终点之声', progress: [1, 1, 1] },
-    { name: '同类相食', progress: [1, 1, 1] },
-    { name: '艺术暴君', progress: [1, 1, 2] },
-    { name: '光荣记忆', progress: [1, 1, 2] },
-    { name: '狼之绯', progress: [1, 1, 1] },
-    { name: '不知归', progress: [2, 1, 1] },
-    { name: '赫拉芬格', progress: [1, 1, 1] },
-    { name: '作品：蚀迹', progress: [1, 1, 1] },
-    { name: '楔子', progress: [2, 1, 1] },
-    { name: '典范', progress: [1, 1, 1] },
-    { name: '扶摇', progress: [1, 3, 2] },
-    { name: '落草', progress: [1, 1, 2] },
-    { name: '望乡', progress: [1, 1, 1] },
-    { name: '昔日精品', progress: [1, 3, 1] },
-    { name: '孤舟', progress: [1, 1, 1] },
-    { name: '领航者', progress: [1, 1, 1] },
-    { name: '负山', progress: [3, 1, 1] },
-    { name: '莫奈何', progress: [1, 1, 1] },
-    { name: '坚城铸造者', progress: [1, 1, 1] },
-    { name: '使命必达', progress: [2, 2, 3] },
-    { name: '向心之引', progress: [1, 1, 1] },
-    { name: '雾中微光', progress: [1, 1, 1] },
-    // { name: '', progress: [1, 1, 1] },
-];
-// for now
-// 正在用的武器: 100
-// 想要练的干员的专武：2
-// default: 1
-// 不感兴趣：0.5
-// 过期专武暂无复刻：0.5
-// 过期通行证武器暂无复刻: 0.25
-// rarity 5 not allowed in this list and fixed: 0.25
-const RemainingWeights: { name: string, weight: number }[] = [
-    { name: '爆破单元', weight: 2 }, // this is the only remaining owned 6 star weapon without essence
-    { name: '逐鳞3.0', weight: 2 },
-    { name: '悼亡诗', weight: 2 },
-    // { name: '爆破单元', weight: 100 },
-];
-
 // you call a 重度能量淤积点 protocol space? more on naming conventions:
 // - 基础属性 is category 1, 附加属性 is category 2, 技能属性 is category 3
 // - 敏捷提升 is an attribute, 敏捷提升·大 is a weapon attribute, 大，中，小 is attribute strength
 // - 切骨·艺术暴论 is a skill attribute, 切骨 is an attribute, 艺术暴论 is a skill
-
-interface ProtocolSpace {
+interface SpaceData {
     name: string,
     cat1: string[],
     cat2: string[],
     cat3: string[],
 }
-const AllSpaces: ProtocolSpace[] = yaml.parse(await fs.readFile('data/space.yml', 'utf-8')).spaces;
+interface WeaponData {
+    name: string,
+    rarity: number,
+    attributes: string[],
+    // the data file is tracked in git, it should be a good tracking of my game experience in theory,
+    // but I'm lazy to frequently push changes this small scale, so the tracking is actually not working
+    // beside that, after several versions, I always acquire all essences of all new weapons several days
+    // after game update, making this tracking mechanism more meaningless
+    // TODO most of the essences that I daily use actually goes to 443, making current common 111 record more meaningless
+    progress?: [number, number, number],
+}
 
 const dedup = <T>(e: T, i: number, a: T[]) => a.indexOf(e) == i;
-function validateSpaceData() {
+async function readData() {
+    const alldata: {
+        spaces: SpaceData[],
+        weapons: Record<string, [number, [string, string, string], [number, number, number]?]>,
+    } = yaml.parse(await fs.readFile('essence/data.yml', 'utf-8'));
+
     const spaceNames: string[] = [];
-    const space1Cat1 = AllSpaces[0].cat1;
+    const space1Cat1 = alldata.spaces[0].cat1;
     const allCat2Names: string[] = [];
     const allCat3Names: string[] = [];
-    for (const space of AllSpaces) {
+    for (const space of alldata.spaces) {
         // no duplicate name
         if (spaceNames.includes(space.name)) {
             console.log(`essence.ts: duplicate protocol space name ${space.name}`);
@@ -108,7 +57,7 @@ function validateSpaceData() {
             console.log(`essence.ts: space ${space.name} cat1 have name not ends with 提升? ${space.cat1.join(', ')}`);
         }
         // cat1 should be exactly same for all spaces
-        if (space !== AllSpaces[0]) {
+        if (space !== alldata.spaces[0]) {
             if (space.cat1.some(a => !space1Cat1.includes(a)) || space1Cat1.some(a => !space.cat1.includes(a))) {
                 console.log(`essence.ts: space ${space.name} cat1 not same as before? ${space.cat1.join(', ')}`);
             }
@@ -141,6 +90,7 @@ function validateSpaceData() {
         allCat3Names.push(...space.cat3);
     }
 
+    const cat1NameSet = space1Cat1;
     // all names in cat2 should appear at least twice
     const cat2NameSet = allCat2Names.filter(dedup);
     for (const cat2Name of cat2NameSet) {
@@ -163,74 +113,53 @@ function validateSpaceData() {
     if (cat2NameSet.some(a => cat3NameSet.includes(a))) {
         console.log(`essence.ts: duplicate name between cat2 and cat3, cat2=[${cat2NameSet.join(', ')}], cat3set=[${cat3NameSet.join(', ')}]`);
     }
-}
-validateSpaceData();
-
-interface WeaponData {
-    name: string,
-    rarity?: number,
-    attributes?: string[],
-}
-const ReallyAllWeapons: WeaponData[] = JSON.parse(await fs.readFile('data/weapon.json', 'utf-8'));
-// skip rarity not 5 and 6 because they are not used in this program, 
-const AllWeapons = ReallyAllWeapons.filter(w => w.rarity == 5 || w.rarity == 6);
-// remove not attribute strength because they are not used in this program
-for (const weapon of AllWeapons) { weapon.attributes = weapon.attributes.map(a => a.split('·')[0]); }
-
-function validateWeaponData() {
-    // after validated space data, validate weapon data against space data
-    const cat1Names = AllSpaces[0].cat1;
-    const cat2Names = AllSpaces.flatMap(s => s.cat2).filter(dedup);
-    const cat3Names = AllSpaces.flatMap(s => s.cat3).filter(dedup);
-    // console.log(cat1Names, cat2Names, cat3Names);
-
-    const weaponNames: string[] = [];
-    for (const weapon of AllWeapons) {
-        if (weaponNames.includes(weapon.name)) {
-            console.log(`essence.ts: duplicate weapon name ${weapon.name}`);
-        }
-        weaponNames.push(weapon.name);
-
-        if (weapon.attributes?.length != 3) {
-            console.log(`essence.ts: weapon ${weapon.name} attribute length not 3?`);
-        } else {
-            if (!cat1Names.includes(weapon.attributes[0])) {
-                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 1 ${weapon.attributes[0]}`);
-            }
-            if (!cat2Names.includes(weapon.attributes[1])) {
-                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 2 ${weapon.attributes[1]}`);
-            }
-            if (!cat3Names.includes(weapon.attributes[2])) {
-                console.log(`essence.ts: weapon ${weapon.name} unknown attribute 3 ${weapon.attributes[2]}`);
-            }
-        }
-    }
-
-    // validate level progress
-    for (const progress of AllProgress) {
-        if (!AllWeapons.some(w => w.name == progress.name)) {
-            console.log(`essence.ts: unknown weapon name ${progress.name} in progress`);
-        }
-    }
-    for (const weight of RemainingWeights) {
-        if (!AllWeapons.some(w => w.name != weight.name)) {
-            console.log(`essence.ts: unknown weapon name ${weight.name} in weight config`);
-        }
-        if (AllProgress.some(p => p.name == weight.name)) {
-            console.log(`essence.ts: weapon ${weight.name} is acquired and no need to weight?`);
-        }
-    }
 
     // other related observations from weapon data but not needed in this program:
     // - rarity 6 attribute length for cat1 and cat2 is always 大, rarity 5 中, rarity 4 小
     // - rarity 3 only have 2 attributes, cat1 and cat3, no cat2
     // - rarity 3 cat 3 skill name are all same
-    // - wiki data have an error that 寒冷伤害提升 is written as 寒冷伤害
-    // - in game data has write 法术伤害提升 as 法术提升 in weapon info, TODO is this fixed?
-    // - in game data has write 源石技艺强度提升 as 源石技艺提升 in space info, TODO this seems fixed?
-    // - in game data has write 终结技充能效率提升 as 终结技效率提升 in space info, TODO this seems fixed?
+
+    // after validated space data, validate weapon data against space data
+    const weaponNames: string[] = [];
+    const weapons: WeaponData[] = [];
+    for (const [weaponName, [rarity, attributes, progress]] of Object.entries(alldata.weapons)) {
+        if (weaponNames.includes(weaponName)) {
+            console.log(`essence.ts: duplicate weapon name ${weaponName}`);
+        }
+        weaponNames.push(weaponName);
+
+        if (attributes?.length != 3) {
+            console.log(`essence.ts: weapon ${weaponName} attribute length not 3?`);
+        } else {
+            if (!cat1NameSet.includes(attributes[0])) {
+                console.log(`essence.ts: weapon ${weaponName} unknown attribute 1 ${attributes[0]}`);
+            }
+            if (!cat2NameSet.includes(attributes[1])) {
+                console.log(`essence.ts: weapon ${weaponName} unknown attribute 2 ${attributes[1]}`);
+            }
+            if (!cat3NameSet.includes(attributes[2])) {
+                console.log(`essence.ts: weapon ${weaponName} unknown attribute 3 ${attributes[2]}`);
+            }
+        }
+        weapons.push({ name: weaponName, rarity, attributes, progress });
+    }
+
+    return { spaces: alldata.spaces, weapons };
 }
-validateWeaponData();
+
+// for now
+// 正在用的武器: 100
+// 想要练的干员的专武：2
+// default: 1
+// 不感兴趣：0.5
+// 过期专武暂无复刻：0.5
+// 过期通行证武器暂无复刻: 0.25
+// rarity 5 not allowed in this list and is fixed: 0.25
+// UPDATE this is not used for very long time, but keep it here in case needed in future
+const weightOverwrites: { name: string, weight: number }[] = [
+    // { name: '爆破单元', weight: 100 },
+];
+const { spaces: AllSpaces, weapons: AllWeapons } = await readData();
 
 function getCombinations<T>(sequence: T[], length: number): T[][] {
     const result: T[][] = [];
@@ -263,25 +192,10 @@ const displayAttribute = (a: string) => {
         .replace('暴击率', '暴击')
 }
 
-function displayAllWeapons() {
-    AllWeapons.sort((w1, w2) => {
-        const p1 = AllProgress.find(p => p.name == w1.name);
-        const p2 = AllProgress.find(p => p.name == w2.name);
-        if (!p1 && p2) { return -1; }
-        if (p1 && !p2) { return 1; }
-        if (w1.attributes[0] != w2.attributes[0]) { return w1.attributes[0].localeCompare(w2.attributes[0]); }
-        if (w1.attributes[1] != w2.attributes[1]) { return w1.attributes[1].localeCompare(w2.attributes[1]); }
-        if (w1.attributes[2] != w2.attributes[2]) { return w1.attributes[2].localeCompare(w2.attributes[2]); }
-        return 0;
-    });
-    for (const weapon of AllWeapons) {
-        const progress = AllProgress.find(p => p.name == weapon.name);
-        const displayProgress = progress ? ` [${progress.progress.join(',')}]` : '';
-        const displayName = styleText(progress ? (weapon.rarity == 6 ? 'magenta' : 'gray') : weapon.rarity == 6 ? 'red' : 'yellow', weapon.name);
-        console.log(styleText(progress ? 'gray' : 'white', `- ${weapon.attributes.map(displayAttribute).join(',')}: ${displayName}${displayProgress}`));
-    }
+interface ProgressOverwrite {
+    name: string,
+    progress: [number, number, number],
 }
-
 interface Strategy {
     space: string,
     cat1Names: string[],
@@ -295,7 +209,7 @@ interface StrategyAttributeCombinations {
     weapons: { name: string, weight: number }[],
 }
 
-function plan(baseProgress: LevelProgress[]): Strategy[] {
+function plan(progressOverwrites: ProgressOverwrite[]): Strategy[] {
 
     const strategies: Strategy[] = [];
     for (const space of AllSpaces) {
@@ -308,8 +222,8 @@ function plan(baseProgress: LevelProgress[]): Strategy[] {
             // note weapons may be empty
             // remain 6 first, then remain 5, then progress 6, then progress 5
             weapons.sort((w1, w2) => {
-                const p1 = baseProgress.find(p => p.name == w1.name);
-                const p2 = baseProgress.find(p => p.name == w2.name);
+                const p1 = progressOverwrites.find(p => p.name == w1.name)?.progress ?? w1.progress;
+                const p2 = progressOverwrites.find(p => p.name == w2.name)?.progress ?? w2.progress;
                 if (!p1 && p2) { return -1; }
                 if (p1 && !p2) { return 1; }
                 if (w1.rarity != w2.rarity) { return w2.rarity - w1.rarity; }
@@ -328,6 +242,20 @@ function plan(baseProgress: LevelProgress[]): Strategy[] {
             }
         }
     }
+    // remove subset
+    for (const strategy of strategies) {
+        if (strategy.cat1Names.length == 3) { continue; }
+        // cat1names is superset
+        const superset = strategies.find(other =>
+            strategy !== other
+            && strategy.space == other.space
+            && strategy.cat2Or3Name == other.cat2Or3Name
+            && !strategy.cat1Names.some(n => !other.cat1Names.includes(n)));
+        if (superset) {
+            // TODO think why there is none
+            console.log(`strategy ${strategy.space}:${strategy.cat2Or3Name}:${strategy.cat1Names.join(',')} is subset of ${superset.cat1Names.join(',')}`);
+        }
+    }
 
     // the original numbers used in score and display are
     // - remaining 6 star weapon attribute combination count (completely same attribute weapon count as 1), this is the probability to get essence for 6 star
@@ -342,7 +270,7 @@ function plan(baseProgress: LevelProgress[]): Strategy[] {
     // so try new strategy with the new weight mechanism
     // that only sort by remaining combination count weighted, if 2 weapons have same combination, choose the higher weight
 
-    const notHaveProgress = (w: WeaponData) => !baseProgress.some(p => p.name == w.name);
+    const notHaveProgress = (w: WeaponData) => !progressOverwrites.some(p => p.name == w.name) && !w.progress;
     for (const { weapons, numbers, combinations } of strategies) {
         if (!weapons.length) {
             numbers.push(0);
@@ -350,7 +278,7 @@ function plan(baseProgress: LevelProgress[]): Strategy[] {
             for (const combination of weapons.filter(notHaveProgress).map(w => w.attributes.join(',')).filter(dedup)) {
                 const weaponAndWeights = weapons.filter(w => w.attributes.join(',') == combination).map(w => ({
                     name: w.name,
-                    weight: w.rarity == 5 ? 0.25 : (RemainingWeights.find(weight => weight.name == w.name)?.weight ?? 1)
+                    weight: w.rarity == 5 ? 0.25 : (weightOverwrites.find(weight => weight.name == w.name)?.weight ?? 1)
                 }));
                 combinations.push({ attributes: combination, weapons: weaponAndWeights });
             }
@@ -374,7 +302,7 @@ function plan(baseProgress: LevelProgress[]): Strategy[] {
     });
     return strategies;
 }
-function displayPlan(baseProgress: LevelProgress[], strategies: Strategy[], top: number = 10, detailIndex: number = 0) {
+function displayPlan(progressOverwrites: ProgressOverwrite[], strategies: Strategy[], top: number = 10, detailIndex: number = 0) {
     for (const [strategy, strategyIndex] of strategies.slice(0, top).map((s, i) => [s, i] as const)) {
         const { space, cat2Or3Name, weapons, cat1Names, numbers } = strategy;
         cat1Names.sort((a1, a2) => AllSpaces[0].cat1.indexOf(a1) - AllSpaces[0].cat1.indexOf(a2));
@@ -390,7 +318,7 @@ function displayPlan(baseProgress: LevelProgress[], strategies: Strategy[], top:
 
         let sb = '  ';
         for (const weapon of weapons) {
-            const haveProgress = baseProgress.some(p => p.name == weapon.name);
+            const haveProgress = progressOverwrites.some(p => p.name == weapon.name) || !!weapon.progress;
             sb += styleText(haveProgress ? 'dim' : weapon.rarity == 5 ? 'yellow' : 'red', weapon.name);
             sb += styleText('gray', `,`);
         }
@@ -398,8 +326,8 @@ function displayPlan(baseProgress: LevelProgress[], strategies: Strategy[], top:
 
         if (strategyIndex == detailIndex) {
             for (const weapon of weapons) {
-                const progress = baseProgress.find(p => p.name == weapon.name);
-                const displayProgress = progress ? ` [${progress.progress.join(',')}]` : '';
+                const progress = progressOverwrites.find(p => p.name == weapon.name)?.progress ?? weapon.progress;
+                const displayProgress = progress ? ` [${progress.join(',')}]` : '';
                 console.log(styleText(progress ? 'gray' : 'white', `  - ${weapon.attributes.map(displayAttribute).join(',')}: ${weapon.name}${displayProgress}`));
             }
         }
@@ -408,7 +336,8 @@ function displayPlan(baseProgress: LevelProgress[], strategies: Strategy[], top:
 
 // total count estimate, seems only can by monte carlo
 // by always choosing the topmost place, and randomly generate 3 essences, display result game count
-function simulate(baseProgress: LevelProgress[]) {
+// TODO make it clear about progress overwrite mechanism
+function simulate(baseProgress: ProgressOverwrite[]) {
     let gameCount = 0;
     let foodCount = 0;
     const currentProgress = [...baseProgress];
@@ -450,7 +379,7 @@ function simulate(baseProgress: LevelProgress[]) {
     console.log(`game count ${gameCount} food count ${foodCount}`);
     return gameCount;
 }
-function estimateOverallProgress(baseProgress: LevelProgress[], times: number = 100) {
+function estimateOverallProgress(baseProgress: ProgressOverwrite[], times: number = 100) {
     let totalGameCount = 0;
     for (const _ of new Array(times).fill(0)) {
         totalGameCount += simulate([]);
@@ -465,16 +394,14 @@ function estimateOverallProgress(baseProgress: LevelProgress[], times: number = 
 if (process.argv[2] == 'plan') {
     const selectedStrategy = +process.argv[3]; // this start from 1 don't forget
     if (isNaN(selectedStrategy)) {
-        displayPlan(AllProgress, plan(AllProgress));
+        displayPlan([], plan([]));
     } else {
-        displayPlan(AllProgress, plan(AllProgress), Math.max(10, selectedStrategy), selectedStrategy - 1);
+        displayPlan([], plan([]), Math.max(10, selectedStrategy), selectedStrategy - 1);
     }
-} else if (process.argv[2] == 'weapons') {
-    displayAllWeapons();
 } else if (process.argv[2] == 'simulate') {
-    console.log('estimating...');
-    estimateOverallProgress(AllProgress);
+    console.log('estimating... error work in progress');
+    // estimateOverallProgress([]);
 } else {
-    console.log(`USAGE: node essence.ts plan | weapons | simulate`);
+    console.log(`USAGE: node essence.ts plan | simulate`);
     process.exit(1);
 }
