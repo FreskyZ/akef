@@ -240,6 +240,9 @@ function transpileRuntimeScript(): string {
             transpileResult = transpileResult.substring(0, transpileResult.length - 10).trimEnd();
         }
         transpileResult += '\n';
+        // import data, if you import data in typescript, it will be inlined
+        transpileResult = transpileResult.replace("const pagedata = window['thepagedata'];\n", '');
+        transpileResult = "import pagedata from './data.json' with { type: 'json' };\n" + transpileResult;
     }
     
     const diagnostics = emitResult.diagnostics;

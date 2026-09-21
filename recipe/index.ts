@@ -2,6 +2,7 @@
 interface ItemData {
     id: string,
     name: string, // name for human
+    icon: string,
     pinyin: string, // pinyin for string
     kind?: 'seed' | 'liquid',
     desc: string[], // main desc and additional desc for human
@@ -43,21 +44,24 @@ for (const machine of pagedata.machines) { machine.id = machine.name; machine.de
 for (const recipe of pagedata.recipes) {
     recipe.id = recipe.name;
     recipe.machineId = (recipe as any)['machine'];
-    recipe.ingredients = (recipe as any)['input'].map((i: any) => ({ id: i.name, count: i.count }));
-    recipe.products = (recipe as any)['output'].map((i: any) => ({ id: i.name, count: i.count }));
+    recipe.ingredients = (recipe as any)['inputs'].map((i: any) => ({ id: i.name, count: i.count }));
+    recipe.products = (recipe as any)['outputs'].map((i: any) => ({ id: i.name, count: i.count }));
 }
-pagedata.icons = Object.fromEntries(pagedata.items.map(i => [i.name, (i as any)['icon']]));
 
 function setupNavigationBar() {
     for (const item of pagedata.items) {
         const itemElement = document.createElement('li');
         itemElement.dataset['id'] = item.id;
-        const imageElement = document.createElement('img');
-        imageElement.alt = item.name;
+        const imageElement = document.createElement('div');
+        imageElement.className = 'image';
+        // imageElement.alt = item.name;
         imageElement.title = item.name;
-        imageElement.src = pagedata.icons[item.id];
-        imageElement.width = 48;
-        imageElement.height = 48;
+        imageElement.style.backgroundImage = `url("./item.avif")`;
+        imageElement.style.backgroundSize = `${1088 * 3/4}px ${1024 * 3/4}px`;
+        imageElement.style.backgroundPosition = `${1088 * 3/4 - +item.icon.split(',')[1] * 48 + 6}px ${1024 * 3/4 - +item.icon.split(',')[0] * 48 + 6}px`;
+        // imageElement.src = pagedata.icons[item.id];
+        // imageElement.width = 48;
+        // imageElement.height = 48;
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
@@ -127,13 +131,16 @@ function collectRecipeTree(item: ItemData, path: string[]) {
         const possibleProductIds = pagedata.recipes.filter(r => r.ingredients.some(r => r.id == item.id)).flatMap(r => r.products.map(r => r.id));
         itemNode.possibleProducts = Array.from(new Set(possibleProductIds)).map(id => pagedata.items.find(i => i.id == id));
     }
-    if (path.length > 10) {
+    // ATTENTION this really gets deep 10? but you still need to handle 清水污水 related issues
+    if (path.length > 20) {
         throw new Error('unexpected too deep');
     }
     // regard seed as leaf node, no recipe, except seed item itself
-    if (item.kind != 'seed' || path.length == 0) {
+    // ATTENTION HARDCODE regard 清水 as no recipe
+    if (item.id != '清水' && item.kind != 'seed' || path.length == 0) {
         // exclude pour in normal dependency tree (allow in possible products)
-        for (const recipe of pagedata.recipes.filter(r => r.kind != 'pour' && r.products.some(r => r.id == item.id))) {
+        // ATTENTION HARDCODE ignore 反应池 recipes because 反应池 and 扩容反应池 is same
+        for (const recipe of pagedata.recipes.filter(r => r.kind != 'pour' && r.machineId != '反应池' && r.products.some(r => r.id == item.id))) {
             itemNode.children.push({
                 data: recipe,
                 // feel free to duplicate depth, the layout algorithm completely don't use node.depth and even node name
@@ -367,10 +374,14 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
     parent.appendChild(svgElement);
     return svgElement;
 }
-function setupImageElement(element: HTMLImageElement, item: ItemData, size: number = 40) {
-    element.src = pagedata.icons[item.id];
-    element.alt = item.name;
-    element.width = element.height = size;
+function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
+    // element.alt = item.name;
+    element.style.backgroundImage = `url("./item.avif")`;
+    element.style.backgroundSize = `${1088 * 40/64}px ${1024 * 40/64}px`;
+    element.style.backgroundPosition = `${1088 * 40/64 - +item.icon.split(',')[1] * 40 + 6}px ${1024 * 40/64 - +item.icon.split(',')[0] * 40 + 6}px`;
+    element.style.width = element.style.height = `${size}px`;
+    // element.src = pagedata.icons[item.id];
+    // element.width = element.height = size;
 }
 
 function setupDragMove(element: HTMLDivElement) {
@@ -520,7 +531,7 @@ function drawRecipeTree(root: ItemNode) {
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
-        /* image */ j(itemElement, 'img', {}, e => {
+        /* image */ j(itemElement, 'div', { className: 'image' }, e => {
             setupImageElement(e, item.data);
             if (item.data.id != root.data.id) {
                 e.addEventListener('click', () => handleOpenPanel(item.data));
@@ -580,7 +591,7 @@ function drawRecipeTree(root: ItemNode) {
                     top: CellHeight * productPosition + 40,
                 }, e => e.addEventListener('click', () => handleOpenPanel(product)));
 
-                /* image */ j(productElement, 'img', {}, e => setupImageElement(e, product));
+                /* image */ j(productElement, 'div', { className: 'image' }, e => setupImageElement(e, product));
                 /* name container */ j(productElement, 'div', { className: 'name' }, nameContainer => {
                     /* name */ j(nameContainer, 'span', { innerText: product.name }, e => e.title = product.desc[0])
                 });
@@ -800,7 +811,7 @@ function drawRecipeTree(root: ItemNode) {
             lineElement.dataset['recipe'] = activeRecipeEntry?.at(-1);
         }));
 
-        /* img */ j(lineElement, 'img', {}, e => setupImageElement(e, item.data, 32));
+        /* img */ j(lineElement, 'div', { className: 'image' }, e => setupImageElement(e, item.data, 32));
         /* name */ j(lineElement, 'span', { className: 'name', innerText: item.data.name });
         
         const recipeLineElement = j(lineElement, 'span', { className: 'recipe-line' });
@@ -813,7 +824,7 @@ function drawRecipeTree(root: ItemNode) {
             /* arrow */ j(recipeLineElement, 'span', { className: 'arrow', innerText: `⇐` });
             for (const [{ id: itemId, count }, index] of recipe.ingredients.map((i, index) => [i, index] as const)) {
                 const item = pagedata.items.find(i => i.id == itemId);
-                /* img */ j(recipeLineElement, 'img', {}, e => setupImageElement(e, item, 32));
+                /* img */ j(recipeLineElement, 'div', { className: 'image' }, e => setupImageElement(e, item, 32));
                 /* name */ j(recipeLineElement, 'span', { className: 'item-name', innerText: pagedata.items.find(i => i.id == itemId).name });
                 /* amount */ j(recipeLineElement, 'span', { className: 'amount', innerText: `×${count}` });
                 if (index != recipe.ingredients.length - 1) { /* plus */ j(recipeLineElement, 'span', { className: 'plus', innerText: '+' }); }
