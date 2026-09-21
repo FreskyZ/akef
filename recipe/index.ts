@@ -1,27 +1,17 @@
 
 interface ItemData {
-    id: string,
     name: string, // name for human
     icon: string,
     pinyin: string, // pinyin for string
     kind?: 'seed' | 'liquid',
-    desc: string[], // main desc and additional desc for human
-}
-interface MachineData {
-    id: string,
-    name: string, // name for human
-    desc: string, // desc for human
-    power: number,
-    size: [number, number],
+    desc: string,
 }
 interface RecipeData {
-    id: string,
     name: string,
-    kind?: 'pour',
-    machineId: string,
-    ingredients: { id: string, count: number }[],
-    products: { id: string, count: number }[],
+    machine: string,
     time: number,
+    inputs: { name: string, count: number }[],
+    outputs: { name: string, count: number }[],
 }
 
 const elements = {
@@ -34,24 +24,13 @@ const elements = {
 
 const pagedata = (window as any)['thepagedata'] as {
     items: ItemData[],
-    machines: MachineData[],
     recipes: RecipeData[],
-    icons: Record<string, string>,
 };
-// ATTENTION temporary compatibility fix
-for (const item of pagedata.items) { item.id = item.name; }
-for (const machine of pagedata.machines) { machine.id = machine.name; machine.desc = ''; }
-for (const recipe of pagedata.recipes) {
-    recipe.id = recipe.name;
-    recipe.machineId = (recipe as any)['machine'];
-    recipe.ingredients = (recipe as any)['inputs'].map((i: any) => ({ id: i.name, count: i.count }));
-    recipe.products = (recipe as any)['outputs'].map((i: any) => ({ id: i.name, count: i.count }));
-}
 
 function setupNavigationBar() {
     for (const item of pagedata.items) {
         const itemElement = document.createElement('li');
-        itemElement.dataset['id'] = item.id;
+        itemElement.dataset['id'] = item.name;
         const imageElement = document.createElement('div');
         imageElement.className = 'image';
         // imageElement.alt = item.name;
@@ -69,8 +48,8 @@ function setupNavigationBar() {
         itemElement.appendChild(nameElement);
         const descriptionElement = document.createElement('div');
         descriptionElement.className = 'description';
-        descriptionElement.innerText = item.desc[0].replace('\n', '');
-        descriptionElement.title = item.desc[0] + item.desc[1];
+        descriptionElement.innerText = item.desc.split('+')[0].replace('\n', '');
+        descriptionElement.title = item.desc.replace('+', '');
         itemElement.appendChild(descriptionElement);
         elements.itemList.appendChild(itemElement);
         itemElement.addEventListener('click', () => handleToggleOpen(item));
@@ -82,8 +61,8 @@ function setupNavigationBar() {
             if (!elements.searchInput.value) {
                 itemElement.style.display = 'grid';
             } else {
-                const item = pagedata.items.find(i => i.id == itemElement.dataset['id']);
-                const found = item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
+                const item = pagedata.items.find(i => i.name == itemElement.dataset['id']);
+                const found = item.name.includes(elements.searchInput.value) // || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
                 itemElement.style.display = found ? 'grid' : 'none';
             }
         }
@@ -123,13 +102,13 @@ interface RecipeNode extends NodeLike {
 // return ItemNode
 function collectRecipeTree(item: ItemData, path: string[]) {
     const itemNode: ItemNode = { data: item, depth: path.length, duplicate: false, children: [], possibleProducts: [] };
-    if (path.includes(item.id)) {
+    if (path.includes(item.name)) {
         itemNode.duplicate = true;
         return itemNode;
     }
     if (!path.length) {
-        const possibleProductIds = pagedata.recipes.filter(r => r.ingredients.some(r => r.id == item.id)).flatMap(r => r.products.map(r => r.id));
-        itemNode.possibleProducts = Array.from(new Set(possibleProductIds)).map(id => pagedata.items.find(i => i.id == id));
+        const possibleProductIds = pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name)).flatMap(r => r.outputs.map(r => r.name));
+        itemNode.possibleProducts = Array.from(new Set(possibleProductIds)).map(name => pagedata.items.find(i => i.name == name));
     }
     // ATTENTION this really gets deep 10? but you still need to handle 清水污水 related issues
     if (path.length > 20) {
@@ -137,15 +116,15 @@ function collectRecipeTree(item: ItemData, path: string[]) {
     }
     // regard seed as leaf node, no recipe, except seed item itself
     // ATTENTION HARDCODE regard 清水 as no recipe
-    if (item.id != '清水' && item.kind != 'seed' || path.length == 0) {
+    if (item.name != '清水' && item.kind != 'seed' || path.length == 0) {
         // exclude pour in normal dependency tree (allow in possible products)
         // ATTENTION HARDCODE ignore 反应池 recipes because 反应池 and 扩容反应池 is same
-        for (const recipe of pagedata.recipes.filter(r => r.kind != 'pour' && r.machineId != '反应池' && r.products.some(r => r.id == item.id))) {
+        for (const recipe of pagedata.recipes.filter(r => r.machine != '反应池' && r.outputs.some(r => r.name == item.name))) {
             itemNode.children.push({
                 data: recipe,
                 // feel free to duplicate depth, the layout algorithm completely don't use node.depth and even node name
                 depth: path.length,
-                children: recipe.ingredients.map(ingredient => collectRecipeTree(pagedata.items.find(i => i.id == ingredient.id), [...path, item.id])),
+                children: recipe.inputs.map(ingredient => collectRecipeTree(pagedata.items.find(i => i.name == ingredient.name), [...path, item.name])),
             });
         }
     }
@@ -333,20 +312,11 @@ const ClockIcon = [
     "M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z",
     "M686.7 638.6L544.1 535.5V288c0-4.4-3.6-8-8-8H488c-4.4 0-8 3.6-8 8v275.4c0 2.6 1.2 5 3.3 6.5l165.4 120.6c3.6 2.6 8.6 1.8 11.2-1.7l28.6-39c2.6-3.7 1.8-8.7-1.8-11.2z",
 ];
-const ThunderboltIcon = [
-    "M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 " +
-    "357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z",
-];
 const ReloadIcon = [
     "M909.1 209.3l-56.4 44.1C775.8 155.1 656.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c181.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 " +
     "8 0 00-10.1 4.8c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 829c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 755.2a342.16 " +
     "342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9c17.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 133.8-27 46.5 0 91.5 9.1 133.8 27a341.5 " +
     "341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 27.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6.6-7.8-10.3-13-6.2z",
-];
-const SharpIcon = [
-    "M872 394c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8H708V152c0-4.4-3.6-8-8-8h-64c-4.4 0-8 3.6-8 8v166H400V152c0-4.4-3.6-8-8-8h-64c-4.4 0-8 3.6-8 8v166H152c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 " +
-    "8h168v236H152c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h168v166c0 4.4 3.6 8 8 8h64c4.4 0 8-3.6 8-8V706h228v166c0 4.4 3.6 8 8 8h64c4.4 0 8-3.6 8-8V706h164c4.4 0 8-3.6 " +
-    "8-8v-60c0-4.4-3.6-8-8-8H708V394h164zM628 630H400V394h228v236z",
 ];
 const ProductIcon = [
     "M464 144a16 16 0 0116 16v304a16 16 0 01-16 16H160a16 16 0 01-16-16V160a16 16 0 0116-16zm-52 68H212v200h200zm493.33 87.69a16 16 0 010 22.62L724.31 503.33a16 16 0 01-22.62 0L520.67 322.31a16 " +
@@ -449,7 +419,7 @@ const speedRequirementStorage: { [itemId: string]: number } = {};
 const allCleanupHandlers: { [itemId: string]: (() => void)[] } = {};
 
 function drawRecipeTree(root: ItemNode) {
-    const cleanupHandlers = allCleanupHandlers[root.data.id] ??= [];
+    const cleanupHandlers = allCleanupHandlers[root.data.name] ??= [];
 
     // you can go down boundaries of the tree for this information,
     // but I'd like to avoid layout algorithm internals outside, so visit all nodes
@@ -491,7 +461,7 @@ function drawRecipeTree(root: ItemNode) {
 
     const panelElement = j(elements.main, 'div', {
         className: 'panel',
-        dataset: { 'id': root.data.id },
+        dataset: { 'id': root.data.name },
         left: 100,
         top: 100,
         width: CellWidth * maxDepth + 112 + (root.possibleProducts.length ? 80 : 0), 
@@ -500,11 +470,11 @@ function drawRecipeTree(root: ItemNode) {
     }, element => {
         setupDragMove(element);
         element.addEventListener('mousedown', e => {
-            handleFocusPanel(root.data.id);
+            handleFocusPanel(root.data.name);
         });
     });
     /* close */ j(panelElement, 'button', { className: 'close', innerText: 'X' },
-        e => e.addEventListener('click', () => handleClosePanel(root.data.id)));
+        e => e.addEventListener('click', () => handleClosePanel(root.data.name)));
     /* title */ j(panelElement, 'span', { className: 'title', innerText: root.data.name });
 
     // try bfs to make element order in main element more clear
@@ -515,7 +485,7 @@ function drawRecipeTree(root: ItemNode) {
             createNode(item, path);
             for (const recipe of item.children) {
                 for (const childItem of recipe.children) {
-                    newRemainingItems.push([childItem, [...path, item.data.id, recipe.data.id]]);
+                    newRemainingItems.push([childItem, [...path, item.data.name, recipe.data.name]]);
                 }
             }
         }
@@ -523,27 +493,27 @@ function drawRecipeTree(root: ItemNode) {
     }
 
     function createNode(item: ItemNode, path: string[]) {
-        const parentRecipe = path.length == 0 ? null : pagedata.recipes.find(r => r.id == path.at(-1));
+        const parentRecipe = path.length == 0 ? null : pagedata.recipes.find(r => r.name == path.at(-1));
 
         const itemElement = j(panelElement, 'div', {
-            className: 'item-node' + (item.data.id == root.data.id ? ' main-item-node' : ''),
-            dataset: { 'id': item.data.id, 'parentrecipe': parentRecipe?.id },
+            className: 'item-node' + (item.data.name == root.data.name ? ' main-item-node' : ''),
+            dataset: { 'id': item.data.name, 'parentrecipe': parentRecipe?.name },
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
         /* image */ j(itemElement, 'div', { className: 'image' }, e => {
             setupImageElement(e, item.data);
-            if (item.data.id != root.data.id) {
+            if (item.data.name != root.data.name) {
                 e.addEventListener('click', () => handleOpenPanel(item.data));
             }
             e.addEventListener('mouseenter', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.id}"]>img`)).forEach(e => e.classList.add('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.add('highlight')));
             e.addEventListener('mouseleave', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.id}"]>img`)).forEach(e => e.classList.remove('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.remove('highlight')));
         });
         // item-node width 72 cannot fit in "bottle with liquid" names, add a container to allow more width
         /* name-container */ j(itemElement, 'div', { className: 'name' }, nameContainer => {
-            /* name */ j(nameContainer, 'span', { innerText: item.data.name }, e => e.title = item.data.desc[0]);
+            /* name */ j(nameContainer, 'span', { innerText: item.data.name }, e => e.title = item.data.desc.split('+')[0]);
         });
 
         if (item.children.length) {
@@ -554,16 +524,16 @@ function drawRecipeTree(root: ItemNode) {
         }
 
         if (parentRecipe) {
-            const amount = parentRecipe.ingredients.find(i => i.id == item.data.id).count;
+            const amount = parentRecipe.inputs.find(i => i.name == item.data.name).count;
             /* amount */ j(itemElement, 'span', { className: 'amount', innerText: `×${amount}` });
-            /* right connect line */ j(itemElement, 'div', { className: 'connect-line connect-line2', dataset: { 'recipe': parentRecipe.id } });
+            /* right connect line */ j(itemElement, 'div', { className: 'connect-line connect-line2', dataset: { 'recipe': parentRecipe.name } });
         }
         for (const recipe of item.children) {
             const direction = item.position > recipe.position ? 'down' : item.position == recipe.position ? 'level' : 'up';
             // collect line belong to panel element, not item element
             /* collect line */ j(panelElement, 'div', {
                 className: `collect-line collect-line-${direction}`,
-                dataset: { 'item': item.data.id, 'recipe': recipe.data.id },
+                dataset: { 'item': item.data.name, 'recipe': recipe.data.name },
                 // item-node.left - collect-line.width
                 left: CellWidth * (maxDepth - item.depth) + 12,
                 // item-node.top + half of img height 24
@@ -583,7 +553,7 @@ function drawRecipeTree(root: ItemNode) {
                 const productPosition = basePosition + productIndex;
                 const productElement = j(panelElement, 'div', {
                     className: 'product-node',
-                    dataset: { 'id': product.id },
+                    dataset: { 'id': product.name },
                     // same gap between root item and possible product item,
                     // so this left is same as recipe position with depth = -1
                     left: CellWidth * maxDepth + 100,
@@ -593,7 +563,7 @@ function drawRecipeTree(root: ItemNode) {
 
                 /* image */ j(productElement, 'div', { className: 'image' }, e => setupImageElement(e, product));
                 /* name container */ j(productElement, 'div', { className: 'name' }, nameContainer => {
-                    /* name */ j(nameContainer, 'span', { innerText: product.name }, e => e.title = product.desc[0])
+                    /* name */ j(nameContainer, 'span', { innerText: product.name }, e => e.title = product.desc.split('+')[0])
                 });
                 /* connect line */ j(productElement, 'div', { className: 'connect-line' });
 
@@ -602,7 +572,7 @@ function drawRecipeTree(root: ItemNode) {
                 const direction = item.position > productPosition ? 'up' : item.position == productPosition ? 'level' : 'down';
                 /* spread line */ j(panelElement, 'div', {
                     className: `spread-line spread-line-${direction}`,
-                    dataset: { 'id': product.id },
+                    dataset: { 'id': product.name },
                     // product-node.left - spread line width 8
                     left: CellWidth * maxDepth + 92,
                     // same as item collect line, item-node.top + 24
@@ -614,67 +584,54 @@ function drawRecipeTree(root: ItemNode) {
 
         // find by begin with parameter path, and -2 is parameter item
         let activeRecipeEntry = activeRecipeStorage.find(s => s.length == path.length + 2
-            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.id);
+            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.name);
         if (!activeRecipeEntry && item.children.length) {
-            activeRecipeEntry = [...path, item.data.id, item.children[0].data.id];
+            activeRecipeEntry = [...path, item.data.name, item.children[0].data.name];
             activeRecipeStorage.push(activeRecipeEntry);
         }
         for (const recipe of item.children) {
             const recipeElement = j(panelElement, 'div', {
-                className: 'recipe-node' + (recipe.data.id == activeRecipeEntry?.at(-1) ? ' active' : ''),
-                dataset: { 'id': recipe.data.id },
+                className: 'recipe-node' + (recipe.data.name == activeRecipeEntry?.at(-1) ? ' active' : ''),
+                dataset: { 'id': recipe.data.name },
                 left: CellWidth * (maxDepth - recipe.depth - 1) + 100,
                 top: CellHeight * recipe.position + 40,
             }, e => {
                 e.addEventListener('click', () => {
                     // click inactive recipe to activate, click active recipe to inactivate all
-                    activeRecipeEntry[activeRecipeEntry.length - 1] = activeRecipeEntry.at(-1) == recipe.data.id ? null : recipe.data.id;
+                    activeRecipeEntry[activeRecipeEntry.length - 1] = activeRecipeEntry.at(-1) == recipe.data.name ? null : recipe.data.name;
                     activeRecipeChangeEvent.send(activeRecipeEntry);
                 });
             });
             cleanupHandlers.push(activeRecipeChangeEvent.addEventListener((entry: string[]) => {
                 if (entry === activeRecipeEntry) {
-                    entry.at(-1) == recipe.data.id ? recipeElement.classList.add('active') : recipeElement.classList.remove('active');
+                    entry.at(-1) == recipe.data.name ? recipeElement.classList.add('active') : recipeElement.classList.remove('active');
                 }
             }));
 
             // time and amount
-            const amount = recipe.data.products.find(p => p.id == item.data.id).count;
+            const amount = recipe.data.outputs.find(p => p.name == item.data.name).count;
             const infoElement1 = j(recipeElement, 'div', { className: 'info-container info-container1' });
             /* time icon */ createSVGElement(infoElement1, ClockIcon, 'time-icon');
             /* time */ j(infoElement1, 'span', { className: 'time', innerText: `${recipe.data.time}s` });
             /* amount icon */ createSVGElement(infoElement1, ProductIcon, 'amount-icon');
             /* amount */ j(infoElement1, 'span', { className: 'amount' +
                 (amount != 1 ? ` amount-not-1` : ''), innerText: `×${amount}` }, e => e.title = '产物数量' + (amount != 1 ? '大于1！' : ''));
-            if (recipe.data.products.length > 1) {
-                const sideProducts = recipe.data.products.filter(p => p.id != item.data.id)
-                    .map(p => `${pagedata.items.find(i => i.id == p.id).name}×${p.count}`).join('，');
+            if (recipe.data.outputs.length > 1) {
+                const sideProducts = recipe.data.outputs.filter(p => p.name != item.data.name)
+                    .map(p => `${pagedata.items.find(i => i.name == p.name).name}×${p.count}`).join('，');
                 const sideProductIconContainer = j(infoElement1, 'span', { className: 'side-product-icon-container' }, e => e.title = `副产物：${sideProducts}`);
                 createSVGElement(sideProductIconContainer, LinkIcon, 'side-product-icon');
             }
     
-            const machine = pagedata.machines.find(m => m.id == recipe.data.machineId);
-            /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: machine.name }, e => {
+            /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine }, e => {
                 e.title = "点击选择配方，点击选择了的配方可以关掉所有配方（把当前物品作为外部输入）";
                 e.addEventListener('mouseenter', () => {
-                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.id}]`)).forEach(e => e.classList.add('highlight'));
+                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.name}]`)).forEach(e => e.classList.add('highlight'));
                 });
                 e.addEventListener('mouseleave', () => {
-                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.id}]`)).forEach(e => e.classList.remove('highlight'));
+                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.name}]`)).forEach(e => e.classList.remove('highlight'));
                 });
             });
-
-            // power and size
-            const infoElement2 = j(recipeElement, 'div', { className: 'info-container info-container2' });
-            /* power icon */ createSVGElement(infoElement2, ThunderboltIcon, 'power-icon');
-            /* power */ j(infoElement2, 'span', { className: 'power', innerText: `${machine.power}W` }, e => {
-                e.style.fontWeight = machine.power == 50 ? 'bold' : '';
-                e.title = machine.name == '研磨机'
-                    ? `额定功率50W，我的天哪砂叶大人又用了50W的电`
-                    : `额定功率${machine.power}W，注意啦注意啦机器摸鱼和卡住的时候也要用这么多电`;
-            });
-            /* size icon */ createSVGElement(infoElement2, SharpIcon, 'size-icon');
-            /* size */ j(infoElement2, 'span', { className: 'size', innerText: `${machine.size[0]}×${machine.size[1]}` }, e => e.title = `占地面积`);
 
             /* left connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line1' });
             /* right connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line2' });
@@ -683,7 +640,7 @@ function drawRecipeTree(root: ItemNode) {
                 // collect line belong to panel element, not recipe element
                 /* collect line */ j(panelElement, 'div', {
                     className: `collect-line collect-line-${direction}`,
-                    dataset: { 'item': item.data.id, 'recipe': recipe.data.id },
+                    dataset: { 'item': item.data.name, 'recipe': recipe.data.name },
                     // recipe-node.left - collect line width 8
                     left: CellWidth * (maxDepth - recipe.depth - 1) + 92,
                     // item-node.top + 24
@@ -703,11 +660,11 @@ function drawRecipeTree(root: ItemNode) {
 
     // speed in calculation is always item per second, note that user input per time speed is item per minute, not per second
     // start with 1 machine if only one recipe, else start with 1 belt
-    const initialSpeed = speedRequirementStorage[root.data.id] ?? (root.children.length != 1 ? 0.5
-        : root.children[0].data.products.find(p => p.id == root.data.id).count / root.children[0].data.time);
+    const initialSpeed = speedRequirementStorage[root.data.name] ?? (root.children.length != 1 ? 0.5
+        : root.children[0].data.outputs.find(p => p.name == root.data.name).count / root.children[0].data.time);
     let currentRootSpeed = initialSpeed;
     const speedHandlers: ((newSpeed: number) => void)[] = [];
-    speedHandlers.push(newSpeed => speedRequirementStorage[root.data.id] = newSpeed);
+    speedHandlers.push(newSpeed => speedRequirementStorage[root.data.name] = newSpeed);
 
     const speedContainer = j(calculationContainerElement, 'span', { className: 'speed-container' });
     if (root.children.length) {
@@ -735,10 +692,10 @@ function drawRecipeTree(root: ItemNode) {
         const [item, path, speed] = remainingItems2.shift();
         createLine(item, path, speed);
         for (const recipe of item.children) {
-            const productAmount = recipe.data.products.find(p => p.id == item.data.id).count;
+            const productAmount = recipe.data.outputs.find(p => p.name == item.data.name).count;
             for (const child of recipe.children) {
-                const ingredientAmount = recipe.data.ingredients.find(i => i.id == child.data.id).count;
-                remainingItems2.unshift([child, [...path, item.data.id, recipe.data.id], speed * ingredientAmount / productAmount]);
+                const ingredientAmount = recipe.data.inputs.find(i => i.name == child.data.name).count;
+                remainingItems2.unshift([child, [...path, item.data.name, recipe.data.name], speed * ingredientAmount / productAmount]);
             }
         }
     }
@@ -758,35 +715,35 @@ function drawRecipeTree(root: ItemNode) {
         };
         
         let activeRecipeEntry = activeRecipeStorage.find(s => s.length == path.length + 2
-            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.id);
+            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.name);
         // TODO why is this not found
         if (!activeRecipeEntry && item.children.length) {
-            activeRecipeEntry = [...path, item.data.id, item.children[0].data.id];
+            activeRecipeEntry = [...path, item.data.name, item.children[0].data.name];
             activeRecipeStorage.push(activeRecipeEntry);
         }
 
         const getElementsForHightlightRecipe = (recipeId: string): HTMLDivElement[] => {
-            const recipe = pagedata.recipes.find(r => r.id == activeRecipeEntry.at(-1));
+            const recipe = pagedata.recipes.find(r => r.name == activeRecipeEntry.at(-1));
             // recipe's machine name and 2 connect lines
             const recipeNodeElements = Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.recipe-node[data-id=${recipeId}]`));
             // collect lines
             const collectLineElements = Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.collect-line[data-recipe=${recipeId}]`));
             // ingredient item images
-            const itemNodeElements1 = recipe.ingredients.flatMap(item =>
-                Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${item.id}][data-parentrecipe=${recipeId}]>img`)));
+            const itemNodeElements1 = recipe.inputs.flatMap(item =>
+                Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${item.name}][data-parentrecipe=${recipeId}]>img`)));
             // product item images
-            const itemNodeElements2 = recipe.products.length != 1 ? []
-                : Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${recipe.products[0].id}]>img`));
+            const itemNodeElements2 = recipe.outputs.length != 1 ? []
+                : Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${recipe.outputs[0].name}]>img`));
             // item right connect lines
-            const connectLine2Elements = recipe.ingredients.flatMap(item =>
-                Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${item.id}]>div.connect-line2[data-recipe=${recipeId}]`)));
+            const connectLine2Elements = recipe.inputs.flatMap(item =>
+                Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${item.name}]>div.connect-line2[data-recipe=${recipeId}]`)));
             // item left connect lines
-            const connectLine1Elements = recipe.products.length != 1 ? []
-                : Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${recipe.products[0].id}]>div.connect-line1`));
+            const connectLine1Elements = recipe.outputs.length != 1 ? []
+                : Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${recipe.outputs[0].name}]>div.connect-line1`));
             return [recipeNodeElements, collectLineElements, itemNodeElements1, itemNodeElements2, connectLine1Elements, connectLine2Elements].flat();
         };
 
-        const lineElement = j(calculationContainerElement, 'div', { className: 'item-line', dataset: { 'id': item.data.id } }, e => {
+        const lineElement = j(calculationContainerElement, 'div', { className: 'item-line', dataset: { 'id': item.data.name } }, e => {
             e.style.marginLeft = `${24 * item.depth}px`;
             e.style.height = getActive() ? '32px' : '0px';
             e.addEventListener('mouseenter', () => {
@@ -819,15 +776,15 @@ function drawRecipeTree(root: ItemNode) {
             recipeLineElement.innerHTML = '';
             delete recipeLineElement.dataset['id'];
             if (!recipeId) { return null; } // this happen when disable all recipe of an item
-            const recipe = pagedata.recipes.find(r => r.id == recipeId);
-            recipeLineElement.dataset['id'] = recipe.id;
+            const recipe = pagedata.recipes.find(r => r.name == recipeId);
+            recipeLineElement.dataset['id'] = recipe.name;
             /* arrow */ j(recipeLineElement, 'span', { className: 'arrow', innerText: `⇐` });
-            for (const [{ id: itemId, count }, index] of recipe.ingredients.map((i, index) => [i, index] as const)) {
-                const item = pagedata.items.find(i => i.id == itemId);
+            for (const [{ name: itemId, count }, index] of recipe.inputs.map((i, index) => [i, index] as const)) {
+                const item = pagedata.items.find(i => i.name == itemId);
                 /* img */ j(recipeLineElement, 'div', { className: 'image' }, e => setupImageElement(e, item, 32));
-                /* name */ j(recipeLineElement, 'span', { className: 'item-name', innerText: pagedata.items.find(i => i.id == itemId).name });
+                /* name */ j(recipeLineElement, 'span', { className: 'item-name', innerText: pagedata.items.find(i => i.name == itemId).name });
                 /* amount */ j(recipeLineElement, 'span', { className: 'amount', innerText: `×${count}` });
-                if (index != recipe.ingredients.length - 1) { /* plus */ j(recipeLineElement, 'span', { className: 'plus', innerText: '+' }); }
+                if (index != recipe.inputs.length - 1) { /* plus */ j(recipeLineElement, 'span', { className: 'plus', innerText: '+' }); }
             }
             // machine name displayed as part of machine count, no need machine name here
             // const machineName = pagedata.machines.find(m => m.id == recipe.machineId).name;
@@ -848,11 +805,11 @@ function drawRecipeTree(root: ItemNode) {
         // speed in machines or belts
         const getGetCountElementText = (recipeId: string) => {
             if (recipeId) {
-                const recipe = pagedata.recipes.find(r => r.id == recipeId);
-                const machineName = pagedata.machines.find(m => m.id == recipe.machineId).name;
-                const productivity = recipe.products.find(p => p.id == item.data.id).count / recipe.time;
+                const recipe = pagedata.recipes.find(r => r.name == recipeId);
+                const machineName = recipe.machine;
+                const productivity = recipe.outputs.find(p => p.name == item.data.name).count / recipe.time;
                 return (rootSpeed: number) => `${machineName}×${round2(relativeSpeed * rootSpeed / productivity)}`;
-            } else if (item.data.id != root.data.id) { // don't display machine count or belt count for root item
+            } else if (item.data.name != root.data.name) { // don't display machine count or belt count for root item
                 if (item.data.kind == 'liquid') {
                     return (rootSpeed: number) => `${round2(relativeSpeed * rootSpeed / 1)}水泵，${round2(relativeSpeed * rootSpeed / 2)}管道`;
                 } else {
@@ -930,14 +887,14 @@ function handleFocusPanel(itemId: string) {
 function handleOpenPanel(item: ItemData) {
     // TODO consider make <main> scroll zoom, make main look like drag move that actually moves all panels
     const panels: HTMLDivElement[] = Array.from(elements.main.querySelectorAll('div.panel'));
-    const existPanel = panels.find(p => p.dataset['id'] == item.id);
+    const existPanel = panels.find(p => p.dataset['id'] == item.name);
     if (existPanel) {
-        handleFocusPanel(item.id);
+        handleFocusPanel(item.name);
     } else {
         const tree = collectRecipeTree(item, []);
         layoutRecipeTree(tree);
         drawRecipeTree(tree);
-        handleFocusPanel(tree.data.id);
+        handleFocusPanel(tree.data.name);
         updateItemList();
     }
 }
@@ -956,13 +913,13 @@ function handleClosePanel(itemId: string) {
 function handleToggleOpen(item: ItemData) {
     const panels: HTMLDivElement[] = Array.from(elements.main.querySelectorAll('div.panel'));
     const maxZIndex = panels.reduce((a, p) => Math.max(a, +(p.style.zIndex ?? '0')), 0);
-    const panel = panels.find(p => p.dataset['id'] == item.id);
+    const panel = panels.find(p => p.dataset['id'] == item.name);
     if (panel && panel.style.zIndex == maxZIndex.toString()) {
         // if have z-index and is max z-index, close
-        handleClosePanel(item.id);
+        handleClosePanel(item.name);
     } else if (panel) {
         // if not topmost panel, bring topmost
-        handleFocusPanel(item.id);
+        handleFocusPanel(item.name);
     } else {
         // if not open, open panel
         handleOpenPanel(item);

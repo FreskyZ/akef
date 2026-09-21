@@ -1,31 +1,12 @@
 import fs from 'node:fs/promises';
 import { styleText } from 'node:util';
 import ts from 'typescript';
-import yaml from 'yaml';
-
-// workflow
-// 1. start browser 
-//    docker run -d --rm --name edge1 -p8002:8002 -p8004:8004 my/msedge:1
-//    docker exec -d edge1 socat TCP-LISTEN:8002,fork,reuseaddr TCP:127.0.0.1:8001
-//    docker exec -d edge1 socat TCP-LISTEN:8004,fork,reuseaddr TCP:127.0.0.1:8003
-// 2. get data
-//    docker run -it --rm --name akef1 --network host -v.:/work -w /work -h AKEF1 my/node:1
-//    node recipe/get-item.ts && node recipe/get-recipe.ts
-// 3. make icons: recipe/make-item item
-// 4. mysterious? normalize: git add data/* && node recipe/normalize.ts
-// 5. make page: node recipe/make-page.ts && upload recipe/result.html
 
 interface ItemData {
     name: string,
     kind?: 'seed' | 'liquid' | 'bottle' | 'filled',
     icon: string,
     desc: string,
-    version: number,
-}
-interface MachineData {
-    name: string,
-    power: number,
-    size: [number, number],
 }
 interface RecipeData {
     machine: string,
@@ -33,168 +14,56 @@ interface RecipeData {
     outputs: { name: string, count: number }[],
     time: number,
     name: string,
-    kind?: 'pour',
+    kind?: string,
 }
 
-interface OldItemData extends ItemData {
-    id: string,
-}
-interface OldMachineData extends MachineData {
-    id: string,
-}
-interface OldRecipeData {
-    id: string,
-    name: string,
-    // exclude pour in some situations
-    // is pour = machineId == 'dismantler_1' && products.length == 2 && one contains('bottle') && one contains('liquid')
-    kind?: 'pour',
-    machineId: string,
-    ingredients: { id: string, count: number }[],
-    products: { id: string, count: number }[],
-    time: number,
-}
+const items = JSON.parse(await fs.readFile('recipe/item.json', 'utf-8')) as ItemData[];
+const recipes = JSON.parse(await fs.readFile('recipe/recipe.json', 'utf-8')) as RecipeData[];
 
-const items = JSON.parse(await fs.readFile('data/item.json', 'utf-8')) as ItemData[];
-const machines = yaml.parse(await fs.readFile('data/machine.yml', 'utf-8')).machines as MachineData[];
-const recipes = JSON.parse(await fs.readFile('data/recipe.json', 'utf-8')) as RecipeData[];
-const olddata = JSON.parse(await fs.readFile('data/recipes-old.json', 'utf-8')) as { items: OldItemData[], machines: OldMachineData[], recipes: OldRecipeData[] };
-
-// validate old items are in new items
-// RESULT: ok, minor desc difference, so you can use old items to map name to id
-for (const olditem of olddata.items) {
-    const newitem = items.find(i => i.name == olditem.name);
-    if (!newitem) {
-        console.log(`item ${olditem.name} in old but not in new?`);
-    } else {
-        // // no kind in olditem, really?
-        // if (olditem.kind != newitem.kind) {
-        //     console.log(`item ${olditem.name} kind ${olditem.kind} != ${newitem.kind}`);
-        // }
-        // // some of them are updated description in public version, but more of them are typo in wiki site ???
-        // const newdesc = newitem.desc.split('+');
-        // if (olditem.desc[0].trim() != newdesc[0] || olditem.desc[1].trim() != newdesc[1]) {
-        //     console.log(`item ${olditem.name} desc diff`);
-        //     console.log(`"${olditem.desc[0]}"+"${olditem.desc[1].trim()}"\n"${newdesc[0]}"+"${newdesc[1]}"`);
-        //     const oldbuffer = Buffer.from(`${olditem.desc[0]}+${olditem.desc[1]}`);
-        //     const newbuffer = Buffer.from(`${newdesc[0]}+${newdesc[1]}`);
-        //     console.log(`old buffer length ${oldbuffer.length} new buffer length ${newbuffer.length}`);
-        //     console.log(oldbuffer.toHex());
-        //     console.log(oldbuffer.toHex());
-        //     for (let index = 0; index < Math.min(oldbuffer.length, newbuffer.length); ++index) {
-        //         if (oldbuffer.at(index) != newbuffer.at(index)) {
-        //             console.log(`byte index ${index} difference ${oldbuffer.at(index)} != ${newbuffer.at(index)}`)
-        //         }
-        //     }
-        // }
-    }
-}
-for (const oldmachine of olddata.machines) {
-    const newmachine = machines.find(m => m.name == oldmachine.name);
-    if (!newmachine) {
-        console.log(`machine ${oldmachine.name} in old but not in new?`);
-    } else {
-        if (newmachine.power != oldmachine.power) {
-            console.log(`machine ${oldmachine.name} power diff ${oldmachine.power} != ${newmachine.power}`);
+// not include bottle + liquid recipes
+for (const recipe of recipes) {
+    if (recipe.inputs.length == 2 && recipe.outputs.length == 1) {
+        const kind1 = items.find(i => i.name == recipe.inputs[0].name).kind;
+        const kind2 = items.find(i => i.name == recipe.inputs[1].name).kind;
+        if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
+            console.log(`do not add bottle+liquid recipes`);
         }
-        if (newmachine.size[0] != oldmachine.size[0] || oldmachine.size[1] != newmachine.size[1]) {
-            console.log(`machine ${oldmachine.name} size diff ${oldmachine.size.join(',')} != ${newmachine.size.join(',')}`);
+    } else if (recipe.inputs.length == 1 && recipe.outputs.length == 2) {
+        const kind1 = items.find(i => i.name == recipe.outputs[0].name).kind;
+        const kind2 = items.find(i => i.name == recipe.outputs[1].name).kind;
+        if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
+            console.log(`do not add bottle+liquid recipes`);
         }
     }
 }
-for (const oldrecipe of olddata.recipes) {
-    const oldmachine = olddata.machines.find(m => m.id == oldrecipe.machineId).name;
-    const oldinputs = oldrecipe.ingredients
-        .map(i => ({ name: olddata.items.find(item => item.id == i.id).name, count: i.count }));
-    // missing 赤铜粉末 in hardcode added data for 1.1, fix the hardcode ok
-    for (const oldoutput of oldrecipe.products) {
-        if (!olddata.items.some(item => item.id == oldoutput.id)) {
-            console.log(`not found id for old recipe product ${JSON.stringify(oldoutput)}`);
-        }
-    }
-    const oldoutputs = oldrecipe.products
-        .map(i => ({ name: olddata.items.find(item => item.id == i.id).name, count: i.count }));
-    const olddisplay = `${oldmachine},${oldinputs.map(i => `${i.name}x${i.count}`).join('+')}=>${oldoutputs.map(i => `${i.name}x${i.count}`).join('+')}`;
-    const newrecipe = recipes.find(r =>
-        r.machine == oldmachine
-        && r.inputs.length == oldinputs.length
-        && r.outputs.length == oldoutputs.length
-        && !r.inputs.some(newinput => !oldinputs.some(oldinput => oldinput.name == newinput.name && oldinput.count == newinput.count))
-        && !oldinputs.some(oldinput => !r.inputs.some(newinput => oldinput.name == newinput.name && oldinput.count == newinput.count))
-        && !r.outputs.some(newinput => !oldoutputs.some(oldinput => oldinput.name == newinput.name && oldinput.count == newinput.count))
-        && !oldoutputs.some(oldinput => !r.outputs.some(newinput => oldinput.name == newinput.name && oldinput.count == newinput.count))
-    );
-    if (!newrecipe) {
-        // some more human errors in hardcoded 1.1 data, fix the hardcode ok
-        console.log(`recipe ${olddisplay} not found in new recipes?`);
-    } else {
-        if (oldrecipe.time != newrecipe.time) {
-            // result: no
-            console.log(`recipe ${olddisplay} time diff ${oldrecipe.time} != ${newrecipe.time}`);
-        }
-        if (oldrecipe.name != newrecipe.name) {
-            // old data use (灌装) for fill, I use normal 生产
-            // old data use 生产 for pour? you mean you produce a bottle by pour?
-            // old data does not different multiple recipe for single product
-            // old data some times use 合成 not 生产
-            // console.log(`recipe ${olddisplay} name diff ${oldrecipe.name} != ${newrecipe.name}`);
-        }
-    }
+// remove no recipe item
+// const newItems: ItemData[] = [];
+// for (const item of items) {
+//     if (recipes.some(r => r.inputs.some(i => i.name == item.name) || r.outputs.some(o => o.name == item.name))) {
+//         newItems.push(item);
+//     }
+// }
+// await fs.writeFile('recipe/item-new.json', '[\n  ' + newItems.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+// await fs.writeFile('recipe/recipe.json', '[\n  ' + recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+
+// remove item.version, reorder properties, merge item.json and recipe.json into data.json
+let sb = '{"items":[\n'
+for (const item of items) {
+    sb += '  ' + JSON.stringify({ name: item.name, kind: item.kind, icon: item.icon, desc: item.desc }) + ',\n';
 }
+sb = sb.substring(0, sb.length - 2) + '\n';
+sb += '],"recipes":[\n';
+for (const recipe of recipes) {
+    sb += '  ' + JSON.stringify({ name: recipe.name, kind: recipe.kind, machine: recipe.machine, time: recipe.time, inputs: recipe.inputs, outputs: recipe.outputs }) + ',\n';
+}
+sb = sb.substring(0, sb.length - 2) + '\n';
+sb += ']}';
+await fs.writeFile('recipe/data.json', sb);
 
-// ATTENTION HARDCODE what do you mean by recipes displayed on machine page is not same as on item page?
-recipes.push({
-    name: '重息壤生产',
-    machine: '天有洪炉',
-    inputs: [{ name: '息壤', count: 10 }, { name: '壤晶废液', count: 10 }],
-    outputs: [{ name: '重息壤', count: 1 }],
-    time: 10,
-});
-recipes.push({
-    name: '赫铜装备原件生产',
-    machine: '装备原件机',
-    inputs: [{ name: '重息壤', count: 2 }, { name: '赫铜零件', count: 2 }],
-    outputs: [{ name: '赫铜装备原件', count: 1 }],
-    time: 10,
-});
-recipes.push({
-    name: '赫铜零件生产',
-    machine: '配件机',
-    inputs: [{ name: '赫铜块', count: 5 }],
-    outputs: [{ name: '赫铜零件', count: 1 }],
-    time: 10,
-});
-
-// make the result recipe.json include items, machines and recipes
-// ATTENTION temporary change new data structure to old data structure to make the web page start running
-// use name as id in old data, this by the way checks whether current naming convention fits in data-* attributes
 // TODO div.item-line[data-recipe=污水再利用 (扩容)] is not a valid selector, whitespace and ascii paran is not valid, cjk character is ok
-const resultdata = {
-    items: [] as OldItemData[],
-    machines: [] as OldMachineData[],
-    recipes: [] as OldRecipeData[],
-};
-resultdata.items = items.filter(i => recipes.some(r => r.inputs.some(input => input.name == i.name) || r.outputs.some(output => output.name == i.name))).map(i => ({
-    id: i.name,
-    icon: i.icon,
-    name: i.name,
-    kind: i.kind == 'liquid' || i.kind == 'seed' ? i.kind : undefined,
-    desc: i.desc.split('+'),
-} as unknown as OldItemData));
-resultdata.machines = machines.map(m => ({ id: m.name, ...m }));
-resultdata.recipes = recipes.map(r => ({
-    id: r.name,
-    name: r.name,
-    time: r.time,
-    kind: r.kind,
-    machineId: r.machine,
-    ingredients: r.inputs.map(i => ({ id: i.name, count: i.count })),
-    products: r.outputs.map(i => ({ id: i.name, count: i.count })),
-}));
 
 // TODO in formal version you need to filter out items without automatic recipe
 // TODO I'd like try to add defaults recipe data, count default to 1, time default to 2
-
-await fs.writeFile('data/recipe-old-struct-new-data.json', JSON.stringify(resultdata, null, 2), 'utf-8');
 
 // see freskyz/fine script/components/typescript.ts function transpile
 // return null for not ok
@@ -286,8 +155,8 @@ function transpileRuntimeScript(): string {
     return success ? transpileResult : null;
 }
 
-// const runtimescript = transpileRuntimeScript();
-// await fs.writeFile('recipe/index.js', runtimescript);
+const runtimescript = transpileRuntimeScript();
+await fs.writeFile('recipe/index.js', runtimescript);
 
 // TODO make pinyin work again
 // by the way, you can ssr the item list in the html file? (server side rendering)
@@ -300,3 +169,5 @@ function transpileRuntimeScript(): string {
 // if single html file works, no need to akari.ts for now
 // TODO to make things more clear, and because of game content complexity after version 3, remove panel functionality for now
 // NOTE if you remember to click into item detail page to validate recipes, that's handled by mysterious normalization
+
+// TODO remove calculation part, change to select a partial subset of the full tree to display, or else things start from xirang is meaningless
