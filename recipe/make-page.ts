@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { styleText } from 'node:util';
 import ts from 'typescript';
+import yaml from 'yaml';
 
 interface ItemData {
     name: string,
@@ -17,53 +18,97 @@ interface RecipeData {
     kind?: string,
 }
 
-const items = JSON.parse(await fs.readFile('recipe/item.json', 'utf-8')) as ItemData[];
-const recipes = JSON.parse(await fs.readFile('recipe/recipe.json', 'utf-8')) as RecipeData[];
+// const items = JSON.parse(await fs.readFile('recipe/item.json', 'utf-8')) as ItemData[];
+// const recipes = JSON.parse(await fs.readFile('recipe/recipe.json', 'utf-8')) as RecipeData[];
 
-// not include bottle + liquid recipes
-for (const recipe of recipes) {
-    if (recipe.inputs.length == 2 && recipe.outputs.length == 1) {
-        const kind1 = items.find(i => i.name == recipe.inputs[0].name).kind;
-        const kind2 = items.find(i => i.name == recipe.inputs[1].name).kind;
-        if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
-            console.log(`do not add bottle+liquid recipes`);
-        }
-    } else if (recipe.inputs.length == 1 && recipe.outputs.length == 2) {
-        const kind1 = items.find(i => i.name == recipe.outputs[0].name).kind;
-        const kind2 = items.find(i => i.name == recipe.outputs[1].name).kind;
-        if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
-            console.log(`do not add bottle+liquid recipes`);
-        }
-    }
-}
-// remove no recipe item
-// const newItems: ItemData[] = [];
-// for (const item of items) {
-//     if (recipes.some(r => r.inputs.some(i => i.name == item.name) || r.outputs.some(o => o.name == item.name))) {
-//         newItems.push(item);
+// // not include bottle + liquid recipes
+// for (const recipe of recipes) {
+//     if (recipe.inputs.length == 2 && recipe.outputs.length == 1) {
+//         const kind1 = items.find(i => i.name == recipe.inputs[0].name).kind;
+//         const kind2 = items.find(i => i.name == recipe.inputs[1].name).kind;
+//         if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
+//             console.log(`do not add bottle+liquid recipes`);
+//         }
+//     } else if (recipe.inputs.length == 1 && recipe.outputs.length == 2) {
+//         const kind1 = items.find(i => i.name == recipe.outputs[0].name).kind;
+//         const kind2 = items.find(i => i.name == recipe.outputs[1].name).kind;
+//         if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
+//             console.log(`do not add bottle+liquid recipes`);
+//         }
 //     }
 // }
-// await fs.writeFile('recipe/item-new.json', '[\n  ' + newItems.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
-// await fs.writeFile('recipe/recipe.json', '[\n  ' + recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+// // remove no recipe item
+// // const newItems: ItemData[] = [];
+// // for (const item of items) {
+// //     if (recipes.some(r => r.inputs.some(i => i.name == item.name) || r.outputs.some(o => o.name == item.name))) {
+// //         newItems.push(item);
+// //     }
+// // }
+// // await fs.writeFile('recipe/item-new.json', '[\n  ' + newItems.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+// // await fs.writeFile('recipe/recipe.json', '[\n  ' + recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
 
-// remove item.version, reorder properties, merge item.json and recipe.json into data.json
-let sb = '{"items":[\n'
-for (const item of items) {
-    sb += '  ' + JSON.stringify({ name: item.name, kind: item.kind, icon: item.icon, desc: item.desc }) + ',\n';
-}
-sb = sb.substring(0, sb.length - 2) + '\n';
-sb += '],"recipes":[\n';
-for (const recipe of recipes) {
-    sb += '  ' + JSON.stringify({ name: recipe.name, kind: recipe.kind, machine: recipe.machine, time: recipe.time, inputs: recipe.inputs, outputs: recipe.outputs }) + ',\n';
-}
-sb = sb.substring(0, sb.length - 2) + '\n';
-sb += ']}';
-await fs.writeFile('recipe/data.json', sb);
+// // remove item.version, reorder properties, merge item.json and recipe.json into data.json
+// let sb = '{"items":[\n'
+// for (const item of items) {
+//     sb += '  ' + JSON.stringify({ name: item.name, kind: item.kind, icon: item.icon, desc: item.desc }) + ',\n';
+// }
+// sb = sb.substring(0, sb.length - 2) + '\n';
+// sb += '],"recipes":[\n';
+// for (const recipe of recipes) {
+//     sb += '  ' + JSON.stringify({ name: recipe.name, kind: recipe.kind, machine: recipe.machine, time: recipe.time, inputs: recipe.inputs, outputs: recipe.outputs }) + ',\n';
+// }
+// sb = sb.substring(0, sb.length - 2) + '\n';
+// sb += ']}';
+// await fs.writeFile('recipe/data.json', sb);
+
+// const data = yaml.parse(await fs.readFile('recipe/test-data.yml', 'utf-8'));
+// // yaml parse gets whitespace (0x20) in current format, you may can use 0x20 to split them, with check current content don't include 0x20
+// // console.log(data.items['沉积酸'].charAt(3) == ' ');
+// console.log(data);
 
 // TODO div.item-line[data-recipe=污水再利用 (扩容)] is not a valid selector, whitespace and ascii paran is not valid, cjk character is ok
 
 // TODO in formal version you need to filter out items without automatic recipe
 // TODO I'd like try to add defaults recipe data, count default to 1, time default to 2
+
+function minifycss(originalContent: string) {
+    // as my simple css is very regular that only contain plain rules .*\s\{attribute*\} and plain attributes .*:\s.*;
+    // so can use simple string manipulation operation to minify
+
+    let b = '';
+    let previousCommentEndPosition = -2;
+    let commentStartPosition = originalContent.indexOf('/*');
+    while (commentStartPosition >= 0) {
+        const commentEndPosition = originalContent.indexOf('*/', commentStartPosition);
+        b += originalContent.substring(previousCommentEndPosition + 2, commentStartPosition);
+        previousCommentEndPosition = commentEndPosition;
+        commentStartPosition = originalContent.indexOf('/*', commentEndPosition);
+    }
+    b += originalContent.substring(previousCommentEndPosition + 2);
+    originalContent = b;
+
+    b = '';
+    let previousRightBracePosition = -1;
+    let leftBracePosition = originalContent.indexOf('{');
+    while (leftBracePosition >= 0) {
+        const rightBracePosition = originalContent.indexOf('}', leftBracePosition);
+        // selector
+        b += originalContent.substring(previousRightBracePosition + 1, leftBracePosition).trim();
+        b += '{';
+        const ruleContent = originalContent.substring(leftBracePosition + 1, rightBracePosition).trim();
+        // every unwanted whitespace characters are around colon and semicolon, so...
+        const trimmed1 = ruleContent.split(':').map(p => p.trim()).join(':');
+        const trimmed2 = trimmed1.split(';').map(p => p.trim()).join(';');
+        b += trimmed2;
+        b += '}\n';
+
+        previousRightBracePosition = rightBracePosition;
+        leftBracePosition = originalContent.indexOf('{', rightBracePosition);
+    }
+    return b.trim();
+}
+const minifyResult = minifycss(await fs.readFile('recipe/index.css', 'utf-8'));
+await fs.writeFile('recipe/index-min.css', minifyResult);
 
 // see freskyz/fine script/components/typescript.ts function transpile
 // return null for not ok
@@ -157,17 +202,3 @@ function transpileRuntimeScript(): string {
 
 const runtimescript = transpileRuntimeScript();
 await fs.writeFile('recipe/index.js', runtimescript);
-
-// TODO make pinyin work again
-// by the way, you can ssr the item list in the html file? (server side rendering)
-// TODO terser result js
-// remove filled items from get-item.ts, don't make filled items in make-icon.rs stage 1
-// don't include fill and pour recipe in get-recipe.ts, traverse items detail page in new version
-// then create really needed filled items in make-icon.rs stage 2 and create result avif in stage 2
-// check whether there is pixel data in 16px padding in the 64px image, if no remove them
-// try make a single html file again, after terser js, manually format result json, avoid filled items and make result avif into data uri, check gz and br size
-// if single html file works, no need to akari.ts for now
-// TODO to make things more clear, and because of game content complexity after version 3, remove panel functionality for now
-// NOTE if you remember to click into item detail page to validate recipes, that's handled by mysterious normalization
-
-// TODO remove calculation part, change to select a partial subset of the full tree to display, or else things start from xirang is meaningless

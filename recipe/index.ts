@@ -404,16 +404,6 @@ class EventEmitter<T> {
     }
 }
 
-// array of
-// path from root item id, through all recipe id and item id, last item is selected recipe id,
-// ATTENTION last item may be null indicating all recipes of the item is disabled, this item is regarded as external input
-// use path because different path may select different recipe, path include recipe because
-// different recipe may have same item, the path by the way distinguishes selection in different root items
-const activeRecipeStorage: string[][] = [];
-const activeRecipeChangeEvent = new EventEmitter<string[]>();
-// save user input speed when panel is closed (this is still internal speed, not user input item per minute)
-const speedRequirementStorage: { [itemId: string]: number } = {};
-
 // cleanup global variable reference
 // NOTE this is not event emitter, this is cleaned by caller
 const allCleanupHandlers: { [itemId: string]: (() => void)[] } = {};
@@ -501,6 +491,7 @@ function drawRecipeTree(root: ItemNode) {
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
+        // TODO item image's hover border is missing
         /* image */ j(itemElement, 'div', { className: 'image' }, e => {
             setupImageElement(e, item.data);
             if (item.data.name != root.data.name) {
@@ -583,30 +574,13 @@ function drawRecipeTree(root: ItemNode) {
         }
 
         // find by begin with parameter path, and -2 is parameter item
-        let activeRecipeEntry = activeRecipeStorage.find(s => s.length == path.length + 2
-            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.name);
-        if (!activeRecipeEntry && item.children.length) {
-            activeRecipeEntry = [...path, item.data.name, item.children[0].data.name];
-            activeRecipeStorage.push(activeRecipeEntry);
-        }
         for (const recipe of item.children) {
             const recipeElement = j(panelElement, 'div', {
-                className: 'recipe-node' + (recipe.data.name == activeRecipeEntry?.at(-1) ? ' active' : ''),
+                className: 'recipe-node active',
                 dataset: { 'id': recipe.data.name },
                 left: CellWidth * (maxDepth - recipe.depth - 1) + 100,
                 top: CellHeight * recipe.position + 40,
-            }, e => {
-                e.addEventListener('click', () => {
-                    // click inactive recipe to activate, click active recipe to inactivate all
-                    activeRecipeEntry[activeRecipeEntry.length - 1] = activeRecipeEntry.at(-1) == recipe.data.name ? null : recipe.data.name;
-                    activeRecipeChangeEvent.send(activeRecipeEntry);
-                });
             });
-            cleanupHandlers.push(activeRecipeChangeEvent.addEventListener((entry: string[]) => {
-                if (entry === activeRecipeEntry) {
-                    entry.at(-1) == recipe.data.name ? recipeElement.classList.add('active') : recipeElement.classList.remove('active');
-                }
-            }));
 
             // time and amount
             const amount = recipe.data.outputs.find(p => p.name == item.data.name).count;
@@ -623,15 +597,7 @@ function drawRecipeTree(root: ItemNode) {
                 createSVGElement(sideProductIconContainer, LinkIcon, 'side-product-icon');
             }
     
-            /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine }, e => {
-                e.title = "点击选择配方，点击选择了的配方可以关掉所有配方（把当前物品作为外部输入）";
-                e.addEventListener('mouseenter', () => {
-                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.name}]`)).forEach(e => e.classList.add('highlight'));
-                });
-                e.addEventListener('mouseleave', () => {
-                    Array.from<HTMLDivElement>(panelElement.querySelectorAll(`div.item-line[data-recipe=${recipe.data.name}]`)).forEach(e => e.classList.remove('highlight'));
-                });
-            });
+            /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine });
 
             /* left connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line1' });
             /* right connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line2' });
@@ -650,193 +616,9 @@ function drawRecipeTree(root: ItemNode) {
             }
         }
     }
-
-    const calculationContainerElement = j(panelElement, 'div', {
-        className: 'calc-container',
-        left: CellWidth * maxDepth + 112 + (root.possibleProducts.length ? 80 : 0),
-        top: 40,
-        width: 600,
-    });
-
-    // speed in calculation is always item per second, note that user input per time speed is item per minute, not per second
-    // start with 1 machine if only one recipe, else start with 1 belt
-    const initialSpeed = speedRequirementStorage[root.data.name] ?? (root.children.length != 1 ? 0.5
-        : root.children[0].data.outputs.find(p => p.name == root.data.name).count / root.children[0].data.time);
-    let currentRootSpeed = initialSpeed;
-    const speedHandlers: ((newSpeed: number) => void)[] = [];
-    speedHandlers.push(newSpeed => speedRequirementStorage[root.data.name] = newSpeed);
-
-    const speedContainer = j(calculationContainerElement, 'span', { className: 'speed-container' });
-    if (root.children.length) {
-        /* item count requirement */ j(speedContainer, 'input', {}, e => {
-            e.type = 'number';
-            e.name = 'item-count-requirement';
-            e.value = round2(initialSpeed * 60).toString();
-            e.addEventListener('change', () => {
-                const newPerMinute = +e.value;
-                // ignore invalid value and 0
-                if (newPerMinute) { currentRootSpeed = newPerMinute / 60; speedHandlers.forEach(h => h(newPerMinute / 60)); }
-            });
-            speedHandlers.push(newSpeed => e.value = round2(newSpeed * 60).toString());
-        });
-        /* speed label */ j(speedContainer, 'label', { innerText: '个每分钟' }, e => e.htmlFor = 'item-count-requirement');
-        /* reset button */ j(speedContainer, 'button', { className: 'reset' }, button => {
-            /* icon */ createSVGElement(button, ReloadIcon);
-            button.addEventListener('click', () => speedHandlers.forEach(h => h(initialSpeed)));
-        });
-    }
-
-    // item lines are ordered in dfs preorder, this is not as free as previous traverse
-    const remainingItems2: [ItemNode, string[], number][] = [[root, [], 1]];
-    while (remainingItems2.length) {
-        const [item, path, speed] = remainingItems2.shift();
-        createLine(item, path, speed);
-        for (const recipe of item.children) {
-            const productAmount = recipe.data.outputs.find(p => p.name == item.data.name).count;
-            for (const child of recipe.children) {
-                const ingredientAmount = recipe.data.inputs.find(i => i.name == child.data.name).count;
-                remainingItems2.unshift([child, [...path, item.data.name, recipe.data.name], speed * ingredientAmount / productAmount]);
-            }
-        }
-    }
-    // speed: relative speed of this item regarding root item speed 1
-    //        speed of child item is multiply amount ratio in recipe, this is not affected by recipe's absolute speed
-    function createLine(item: ItemNode, path: string[], relativeSpeed: number) {
-
-        // hide this line if any recipe on path is not active
-        // for every slice start from 0 to 2k (1 <= k <= n/2), the slice exist in storage
-        const getActive = () => {
-            for (const length of new Array(path.length / 2).fill(0).map((_, i) => i + 1)) {
-                if (!activeRecipeStorage.some(s => s.length == length * 2 && !new Array(length * 2).fill(0).some((_, i) => s[i] != path[i]))) {
-                    return false;
-                }
-            }
-            return true;
-        };
-        
-        let activeRecipeEntry = activeRecipeStorage.find(s => s.length == path.length + 2
-            && !new Array(path.length).fill(0).some((_, i) => s[i] != path[i]) && s.at(-2) == item.data.name);
-        // TODO why is this not found
-        if (!activeRecipeEntry && item.children.length) {
-            activeRecipeEntry = [...path, item.data.name, item.children[0].data.name];
-            activeRecipeStorage.push(activeRecipeEntry);
-        }
-
-        const getElementsForHightlightRecipe = (recipeId: string): HTMLDivElement[] => {
-            const recipe = pagedata.recipes.find(r => r.name == activeRecipeEntry.at(-1));
-            // recipe's machine name and 2 connect lines
-            const recipeNodeElements = Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.recipe-node[data-id=${recipeId}]`));
-            // collect lines
-            const collectLineElements = Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.collect-line[data-recipe=${recipeId}]`));
-            // ingredient item images
-            const itemNodeElements1 = recipe.inputs.flatMap(item =>
-                Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${item.name}][data-parentrecipe=${recipeId}]>img`)));
-            // product item images
-            const itemNodeElements2 = recipe.outputs.length != 1 ? []
-                : Array.from(panelElement.querySelectorAll<HTMLImageElement>(`div.item-node[data-id=${recipe.outputs[0].name}]>img`));
-            // item right connect lines
-            const connectLine2Elements = recipe.inputs.flatMap(item =>
-                Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${item.name}]>div.connect-line2[data-recipe=${recipeId}]`)));
-            // item left connect lines
-            const connectLine1Elements = recipe.outputs.length != 1 ? []
-                : Array.from(panelElement.querySelectorAll<HTMLDivElement>(`div.item-node[data-id=${recipe.outputs[0].name}]>div.connect-line1`));
-            return [recipeNodeElements, collectLineElements, itemNodeElements1, itemNodeElements2, connectLine1Elements, connectLine2Elements].flat();
-        };
-
-        const lineElement = j(calculationContainerElement, 'div', { className: 'item-line', dataset: { 'id': item.data.name } }, e => {
-            e.style.marginLeft = `${24 * item.depth}px`;
-            e.style.height = getActive() ? '32px' : '0px';
-            e.addEventListener('mouseenter', () => {
-                // when mouse event, recipe will not change, can load and change recipe display style here
-                // attention, this subscription should happen inside, or else it will not change when active recipe changes
-                if (!activeRecipeEntry.at(-1)) {
-                    return;
-                }
-                getElementsForHightlightRecipe(activeRecipeEntry.at(-1)).forEach(e => e.classList.add('highlight'));
-            });            
-            e.addEventListener('mouseleave', () => {
-                if (!activeRecipeEntry.at(-1)) {
-                    return;
-                }
-                getElementsForHightlightRecipe(activeRecipeEntry.at(-1)).forEach(e => e.classList.remove('highlight'));
-            });
-        });
-
-        lineElement.dataset['recipe'] = activeRecipeEntry?.at(-1);
-        cleanupHandlers.push(activeRecipeChangeEvent.addEventListener(() => {
-            lineElement.style.height = getActive() ? '32px' : '0px';
-            lineElement.dataset['recipe'] = activeRecipeEntry?.at(-1);
-        }));
-
-        /* img */ j(lineElement, 'div', { className: 'image' }, e => setupImageElement(e, item.data, 32));
-        /* name */ j(lineElement, 'span', { className: 'name', innerText: item.data.name });
-        
-        const recipeLineElement = j(lineElement, 'span', { className: 'recipe-line' });
-        const fillRecipeLine = (recipeId: string) => {
-            recipeLineElement.innerHTML = '';
-            delete recipeLineElement.dataset['id'];
-            if (!recipeId) { return null; } // this happen when disable all recipe of an item
-            const recipe = pagedata.recipes.find(r => r.name == recipeId);
-            recipeLineElement.dataset['id'] = recipe.name;
-            /* arrow */ j(recipeLineElement, 'span', { className: 'arrow', innerText: `⇐` });
-            for (const [{ name: itemId, count }, index] of recipe.inputs.map((i, index) => [i, index] as const)) {
-                const item = pagedata.items.find(i => i.name == itemId);
-                /* img */ j(recipeLineElement, 'div', { className: 'image' }, e => setupImageElement(e, item, 32));
-                /* name */ j(recipeLineElement, 'span', { className: 'item-name', innerText: pagedata.items.find(i => i.name == itemId).name });
-                /* amount */ j(recipeLineElement, 'span', { className: 'amount', innerText: `×${count}` });
-                if (index != recipe.inputs.length - 1) { /* plus */ j(recipeLineElement, 'span', { className: 'plus', innerText: '+' }); }
-            }
-            // machine name displayed as part of machine count, no need machine name here
-            // const machineName = pagedata.machines.find(m => m.id == recipe.machineId).name;
-            // /* machine name */ j(recipeLineElement, 'span', { className: 'machine-name', innerText: machineName });
-            return recipeLineElement;
-        }
-    
-        const activeRecipeId = activeRecipeEntry?.at(-1);
-        if (item.children.length && activeRecipeId) {
-            fillRecipeLine(activeRecipeId);
-        }
-        cleanupHandlers.push(activeRecipeChangeEvent.addEventListener(entry => {
-            if (activeRecipeEntry === entry && recipeLineElement?.dataset['id'] != entry.at(-1)) {
-                fillRecipeLine(entry.at(-1));
-            }
-        }));
-
-        // speed in machines or belts
-        const getGetCountElementText = (recipeId: string) => {
-            if (recipeId) {
-                const recipe = pagedata.recipes.find(r => r.name == recipeId);
-                const machineName = recipe.machine;
-                const productivity = recipe.outputs.find(p => p.name == item.data.name).count / recipe.time;
-                return (rootSpeed: number) => `${machineName}×${round2(relativeSpeed * rootSpeed / productivity)}`;
-            } else if (item.data.name != root.data.name) { // don't display machine count or belt count for root item
-                if (item.data.kind == 'liquid') {
-                    return (rootSpeed: number) => `${round2(relativeSpeed * rootSpeed / 1)}水泵，${round2(relativeSpeed * rootSpeed / 2)}管道`;
-                } else {
-                    return (rootSpeed: number) => `${round2(relativeSpeed * rootSpeed / 0.5)}带`;
-                }
-            } else {
-                return (_: number) => '';
-            }
-        };
-
-        let getCountElementText = getGetCountElementText(activeRecipeId);
-        let countElement = j(lineElement, 'span', { className: 'count', innerText: getCountElementText(initialSpeed) });
-        speedHandlers.push(newSpeed => countElement.innerText = getCountElementText(newSpeed));
-
-        cleanupHandlers.push(activeRecipeChangeEvent.addEventListener(entry => {
-            if (activeRecipeEntry === entry && recipeLineElement?.dataset['id'] != entry.at(-1)) {
-                getCountElementText = getGetCountElementText(entry.at(-1));
-                countElement.innerText = getCountElementText(currentRootSpeed);
-            }
-        }));
-
-        // connect line to this element TODO this need precise coordinate of this item
-    }
-
-    /* total */ j(calculationContainerElement, 'div', { innerText: '总计...' });
 }
 
+// TODO this list unexpected reordered after first click
 let sortMethod: 'normal' | 'active' = 'normal';
 const sortMethodDescription = {
     'normal': '现在是正常排序，点一下换成打开的窗口排在前面',
