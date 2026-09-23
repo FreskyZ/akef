@@ -1,13 +1,14 @@
 {
-  "name": "browser",
+  "name": "akef",
   "version": "0.1.0",
   "type": "module",
   "scripts": {},
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^26.6.2",
     "chalk-template": "^1.1.2",
-    "dayjs": "^1.11.20",
+    "dayjs": "^1.11.23",
+    "terser": "^5.51.2",
     "typescript": "^6.0.3",
-    "yaml": "^2.8.3"
+    "yaml": "^2.9.1"
   }
 }

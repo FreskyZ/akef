@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { styleText } from 'node:util';
+import { minify } from 'terser';
 import ts from 'typescript';
 import yaml from 'yaml';
 
@@ -27,12 +28,12 @@ interface DataConfig {
     environments: string[],
 }
 
-async function processData(filepath: string) {
+function processData(originalContent: string) {
 
     const alldata: {
         配方: Record<string, string>,
         配置: Record<string, string[]>,
-    } = yaml.parse(await fs.readFile(filepath, 'utf-8'));
+    } = yaml.parse(originalContent);
     const dataconfig: DataConfig = {
         plants: alldata.配置.植物,
         bottles: alldata.配置.瓶子,
@@ -198,154 +199,12 @@ async function processData(filepath: string) {
     sb += '],"recipes":[\n  ';
     sb += resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ');
     sb += '\n]}';
-    await fs.writeFile('recipe/data-new.json', sb);
+    return sb;
 }
-await processData('recipe/data.yml');
-
-// TODO in result json, default time to 2, default count to 1
-
-
-// recipes.sort((r1, r2) => Buffer.from(r1.name).compare(Buffer.from(r2.name)));
-
-// let sb = '';
-// sb += '配方:\n'
-// for (const recipe of recipes) {
-//     sb += '  ' + recipe.name + ': ';
-//     for (const input of recipe.inputs) {
-//         if (input.count > 1) { sb += `${input.count}`; }
-//         sb += input.name;
-//         sb += ' + ';
-//     }
-//     sb = sb.substring(0, sb.length - 3);
-//     sb += ` ->[${recipe.machine},${recipe.time}s]-> `;
-//     for (const output of recipe.outputs) {
-//         if (output.count > 1) { sb += `${output.count}`; }
-//         sb += output.name;
-//         sb += ' + ';
-//     }
-//     if (recipe.outputs.length) {
-//         sb = sb.substring(0, sb.length - 3);
-//     } else {
-//         sb += '无';
-//     }
-//     sb += '\n';
-// }
-// sb += '\n'
-// sb += '物品类别:\n';
-// sb += '  种子: [' + items.filter(i => i.kind == 'seed').map(i => i.name).join(', ') + ']\n';
-// sb += '  瓶子: [' + items.filter(i => i.kind == 'bottle').map(i => i.name).join(', ') + ']\n';
-// sb += '  液体: [' + items.filter(i => i.kind == 'liquid').map(i => i.name).join(', ') + ']\n';
-// sb += '  气体: [' + items.filter(i => i.kind == 'gas').map(i => i.name).join(', ') + ']\n';
-// sb += '  瓶子+液体: [' + items.filter(i => i.kind == 'filled').map(i => i.name).join(', ') + ']\n';
-// sb += '  瓶子+气体: [' + items.filter(i => i.kind == 'bottle+gas').map(i => i.name).join(', ') + ']\n';
-// await fs.writeFile('recipe/data-order.yml', sb);
-
-// try align recipes
-// RESULT: no, vscode + cascadia code default settings don't align cjk characters
-// const formattedRecipes: string[][] = [];
-// for (const recipe of recipes) {
-//     const part1 = `  ${recipe.name}: `;
-//     let part2 = '';
-//     for (const input of recipe.inputs) {
-//         if (input.count > 1) { part2 += `${input.count}`; }
-//         part2 += input.name;
-//         part2 += ' + ';
-//     }
-//     part2 = part2.substring(0, part2.length - 3);
-//     const part3 = ` =>[${recipe.machine}`;
-//     let part4 = '';
-//     if (recipe.time != 2) {
-//         part4 += `+${recipe.time}s`;
-//     }
-//     part4 += `]=> `;
-//     let part5 = '';
-//     for (const output of recipe.outputs) {
-//         if (output.count > 1) { part5 += `${output.count}`; }
-//         part5 += output.name;
-//         part5 += ' + ';
-//     }
-//     if (recipe.outputs.length) {
-//         part5 = part5.substring(0, part5.length - 3);
-//     } else {
-//         part5 += '无';
-//     }
-//     formattedRecipes.push([part1, part2, part3, part4, part5]);
-// }
-// // make the => between part 2 and 3 align, that is, respect longest part 1 + 2
-// // whitespace is added between 1 and 2, so 1 and 2 is not in one part
-// const longestPart1And2 = formattedRecipes.reduce((v, r) => Math.max(v, r[0].length + r[1].length), 0);
-// // make the => between part 4 and 5 align, that is, respect longest part 3 + 4
-// // whitespace is added between 3 and 4, so 3 and 4 is not in one part
-// const longestPart3And4 = formattedRecipes.reduce((v, r) => Math.max(v, r[2].length + r[3].length), 0);
-
-// let sb = '';
-// sb += '配方:\n'
-// for (const recipe of formattedRecipes) {
-//     sb += recipe[0];
-//     sb += new Array(longestPart1And2 - recipe[0].length - recipe[1].length).fill(' ').join('');
-//     sb += recipe[1] + recipe[2];
-//     sb += new Array(longestPart3And4 - recipe[2].length - recipe[3].length).fill(' ').join('');
-//     sb += recipe[3] + recipe[4];
-//     sb += '\n';
-// }
-// await fs.writeFile('recipe/data-align.yml', sb);
-
-
-
-// // not include bottle + liquid recipes
-// for (const recipe of recipes) {
-//     if (recipe.inputs.length == 2 && recipe.outputs.length == 1) {
-//         const kind1 = items.find(i => i.name == recipe.inputs[0].name).kind;
-//         const kind2 = items.find(i => i.name == recipe.inputs[1].name).kind;
-//         if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
-//             console.log(`do not add bottle+liquid recipes`);
-//         }
-//     } else if (recipe.inputs.length == 1 && recipe.outputs.length == 2) {
-//         const kind1 = items.find(i => i.name == recipe.outputs[0].name).kind;
-//         const kind2 = items.find(i => i.name == recipe.outputs[1].name).kind;
-//         if (kind1 == 'liquid' && kind2 == 'bottle' || kind1 == 'bottle' && kind2 == 'liquid') {
-//             console.log(`do not add bottle+liquid recipes`);
-//         }
-//     }
-// }
-// // remove no recipe item
-// // const newItems: ItemData[] = [];
-// // for (const item of items) {
-// //     if (recipes.some(r => r.inputs.some(i => i.name == item.name) || r.outputs.some(o => o.name == item.name))) {
-// //         newItems.push(item);
-// //     }
-// // }
-// // await fs.writeFile('recipe/item-new.json', '[\n  ' + newItems.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
-// // await fs.writeFile('recipe/recipe.json', '[\n  ' + recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
-
-// // remove item.version, reorder properties, merge item.json and recipe.json into data.json
-// let sb = '{"items":[\n'
-// for (const item of items) {
-//     sb += '  ' + JSON.stringify({ name: item.name, kind: item.kind, icon: item.icon, desc: item.desc }) + ',\n';
-// }
-// sb = sb.substring(0, sb.length - 2) + '\n';
-// sb += '],"recipes":[\n';
-// for (const recipe of recipes) {
-//     sb += '  ' + JSON.stringify({ name: recipe.name, kind: recipe.kind, machine: recipe.machine, time: recipe.time, inputs: recipe.inputs, outputs: recipe.outputs }) + ',\n';
-// }
-// sb = sb.substring(0, sb.length - 2) + '\n';
-// sb += ']}';
-// await fs.writeFile('recipe/data.json', sb);
-
-// const data = yaml.parse(await fs.readFile('recipe/test-data.yml', 'utf-8'));
-// // yaml parse gets whitespace (0x20) in current format, you may can use 0x20 to split them, with check current content don't include 0x20
-// // console.log(data.items['沉积酸'].charAt(3) == ' ');
-// console.log(data);
-
-// TODO div.item-line[data-recipe=污水再利用 (扩容)] is not a valid selector, whitespace and ascii paran is not valid, cjk character is ok
-
-// TODO in formal version you need to filter out items without automatic recipe
-// TODO I'd like try to add defaults recipe data, count default to 1, time default to 2
 
 function minifycss(originalContent: string) {
     // as my simple css is very regular that only contain plain rules .*\s\{attribute*\} and plain attributes .*:\s.*;
     // so can use simple string manipulation operation to minify
-
     let b = '';
     let previousCommentEndPosition = -2;
     let commentStartPosition = originalContent.indexOf('/*');
@@ -378,12 +237,10 @@ function minifycss(originalContent: string) {
     }
     return b.trim();
 }
-const minifyResult = minifycss(await fs.readFile('recipe/index.css', 'utf-8'));
-await fs.writeFile('recipe/index-min.css', minifyResult);
 
 // see freskyz/fine script/components/typescript.ts function transpile
 // return null for not ok
-function transpileRuntimeScript(): string {
+async function transpileRuntimeScript(): Promise<string> {
 
     const program = ts.createProgram(['recipe/index.ts'], {
         lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
@@ -468,8 +325,24 @@ function transpileRuntimeScript(): string {
         }
         console.log(displayCode + fileAndPosition + flattenedMessage);
     }
-    return success ? transpileResult : null;
+    if (!success) { return null; }
+    
+    const minifyResult = await minify(transpileResult, {
+        module: true,
+        sourceMap: false,
+        toplevel: true,
+        compress: { ecma: 2025 },
+        format: { max_line_len: 160 },
+    });
+    return minifyResult.code;
 }
 
-const runtimescript = transpileRuntimeScript();
-await fs.writeFile('recipe/index.js', runtimescript);
+const datafile = processData(await fs.readFile('recipe/data.yml', 'utf-8'));
+await fs.writeFile('build/data.json', datafile);
+console.log(`write build/data.json`);
+const minifyResult = minifycss(await fs.readFile('recipe/index.css', 'utf-8'));
+await fs.writeFile('build/index.css', minifyResult);
+console.log(`write build/index.css`);
+const runtimescript = await transpileRuntimeScript();
+await fs.writeFile('build/index.js', runtimescript);
+console.log(`write build/index.js`);
