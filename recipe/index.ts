@@ -1,17 +1,15 @@
 
 interface ItemData {
     name: string, // name for human
-    icon: string,
+    icon: [number, number],
     pinyin: string, // pinyin for string
-    kind?: 'seed' | 'liquid',
-    desc: string,
 }
 interface RecipeData {
     name: string,
     machine: string,
-    time: number,
-    inputs: { name: string, count: number }[],
-    outputs: { name: string, count: number }[],
+    time?: number,
+    inputs: { name: string, count?: number }[],
+    outputs: { name: string, count?: number }[],
 }
 
 const elements = {
@@ -36,8 +34,8 @@ function setupNavigationBar() {
         // imageElement.alt = item.name;
         imageElement.title = item.name;
         imageElement.style.backgroundImage = `url("./item.avif")`;
-        imageElement.style.backgroundSize = `${1088 * 3/4}px ${1024 * 3/4}px`;
-        imageElement.style.backgroundPosition = `${1088 * 3/4 - +item.icon.split(',')[1] * 48 + 6}px ${1024 * 3/4 - +item.icon.split(',')[0] * 48 + 6}px`;
+        imageElement.style.backgroundSize = `${704 * 3/4}px ${704 * 3/4}px`;
+        imageElement.style.backgroundPosition = `${704 * 3/4 - +item.icon[1] * 48 + 6}px ${704 * 3/4 - +item.icon[0] * 48 + 6}px`;
         // imageElement.src = pagedata.icons[item.id];
         // imageElement.width = 48;
         // imageElement.height = 48;
@@ -48,8 +46,7 @@ function setupNavigationBar() {
         itemElement.appendChild(nameElement);
         const descriptionElement = document.createElement('div');
         descriptionElement.className = 'description';
-        descriptionElement.innerText = item.desc.split('+')[0].replace('\n', '');
-        descriptionElement.title = item.desc.replace('+', '');
+        descriptionElement.innerText = 'description';
         itemElement.appendChild(descriptionElement);
         elements.itemList.appendChild(itemElement);
         itemElement.addEventListener('click', () => handleToggleOpen(item));
@@ -116,7 +113,7 @@ function collectRecipeTree(item: ItemData, path: string[]) {
     }
     // regard seed as leaf node, no recipe, except seed item itself
     // ATTENTION HARDCODE regard 清水 as no recipe
-    if (item.name != '清水' && item.kind != 'seed' || path.length == 0) {
+    if (item.name != '清水' || path.length == 0) {
         // exclude pour in normal dependency tree (allow in possible products)
         // ATTENTION HARDCODE ignore 反应池 recipes because 反应池 and 扩容反应池 is same
         for (const recipe of pagedata.recipes.filter(r => r.machine != '反应池' && r.outputs.some(r => r.name == item.name))) {
@@ -347,8 +344,8 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
 function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
     // element.alt = item.name;
     element.style.backgroundImage = `url("./item.avif")`;
-    element.style.backgroundSize = `${1088 * 40/64}px ${1024 * 40/64}px`;
-    element.style.backgroundPosition = `${1088 * 40/64 - +item.icon.split(',')[1] * 40 + 6}px ${1024 * 40/64 - +item.icon.split(',')[0] * 40 + 6}px`;
+    element.style.backgroundSize = `${704 * 40/64}px ${704 * 40/64}px`;
+    element.style.backgroundPosition = `${704 * 40/64 - +item.icon[1] * 40 + 6}px ${704 * 40/64 - +item.icon[0] * 40 + 6}px`;
     element.style.width = element.style.height = `${size}px`;
     // element.src = pagedata.icons[item.id];
     // element.width = element.height = size;
@@ -504,7 +501,7 @@ function drawRecipeTree(root: ItemNode) {
         });
         // item-node width 72 cannot fit in "bottle with liquid" names, add a container to allow more width
         /* name-container */ j(itemElement, 'div', { className: 'name' }, nameContainer => {
-            /* name */ j(nameContainer, 'span', { innerText: item.data.name }, e => e.title = item.data.desc.split('+')[0]);
+            /* name */ j(nameContainer, 'span', { innerText: item.data.name });
         });
 
         if (item.children.length) {
@@ -515,7 +512,7 @@ function drawRecipeTree(root: ItemNode) {
         }
 
         if (parentRecipe) {
-            const amount = parentRecipe.inputs.find(i => i.name == item.data.name).count;
+            const amount = parentRecipe.inputs.find(i => i.name == item.data.name).count ?? 1;
             /* amount */ j(itemElement, 'span', { className: 'amount', innerText: `×${amount}` });
             /* right connect line */ j(itemElement, 'div', { className: 'connect-line connect-line2', dataset: { 'recipe': parentRecipe.name } });
         }
@@ -554,7 +551,7 @@ function drawRecipeTree(root: ItemNode) {
 
                 /* image */ j(productElement, 'div', { className: 'image' }, e => setupImageElement(e, product));
                 /* name container */ j(productElement, 'div', { className: 'name' }, nameContainer => {
-                    /* name */ j(nameContainer, 'span', { innerText: product.name }, e => e.title = product.desc.split('+')[0])
+                    /* name */ j(nameContainer, 'span', { innerText: product.name })
                 });
                 /* connect line */ j(productElement, 'div', { className: 'connect-line' });
 
@@ -583,16 +580,16 @@ function drawRecipeTree(root: ItemNode) {
             });
 
             // time and amount
-            const amount = recipe.data.outputs.find(p => p.name == item.data.name).count;
+            const amount = recipe.data.outputs.find(p => p.name == item.data.name).count ?? 1;
             const infoElement1 = j(recipeElement, 'div', { className: 'info-container info-container1' });
             /* time icon */ createSVGElement(infoElement1, ClockIcon, 'time-icon');
-            /* time */ j(infoElement1, 'span', { className: 'time', innerText: `${recipe.data.time}s` });
+            /* time */ j(infoElement1, 'span', { className: 'time', innerText: `${recipe.data.time ?? 2}s` });
             /* amount icon */ createSVGElement(infoElement1, ProductIcon, 'amount-icon');
             /* amount */ j(infoElement1, 'span', { className: 'amount' +
                 (amount != 1 ? ` amount-not-1` : ''), innerText: `×${amount}` }, e => e.title = '产物数量' + (amount != 1 ? '大于1！' : ''));
             if (recipe.data.outputs.length > 1) {
                 const sideProducts = recipe.data.outputs.filter(p => p.name != item.data.name)
-                    .map(p => `${pagedata.items.find(i => i.name == p.name).name}×${p.count}`).join('，');
+                    .map(p => `${pagedata.items.find(i => i.name == p.name).name}×${p.count ?? 1}`).join('，');
                 const sideProductIconContainer = j(infoElement1, 'span', { className: 'side-product-icon-container' }, e => e.title = `副产物：${sideProducts}`);
                 createSVGElement(sideProductIconContainer, LinkIcon, 'side-product-icon');
             }

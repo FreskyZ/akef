@@ -10,26 +10,9 @@
 # uv add --script example.py Pillow
 # uv run example.py
 
-import sys, json, base64, pathlib, io
+import sys, json, base64, pathlib, io, math
 import yaml
 from PIL import Image
-
-# # 1. from hechen.html inline webp data uri
-# with open('public-archive/hechen-item.json') as f:
-#     items = json.load(f)
-# with open('public-archive/hechen-image.json') as f:
-#     item_images = json.load(f)
-# for item_id, image_data in item_images.items():
-#     item_name = next(d['name'] for d in items if d['id'] == item_id)
-#     item_name = item_name.replace('(', '').replace(')', '').replace(' ', '-')
-#     # print(item_id, item_name, len(image_data), image_data[:30])
-#     with open(f'images-hechen-webp/{item_name}.webp', 'wb') as f:
-#         f.write(base64.b64decode(image_data[23:]))
-
-# # 2. convert webp to avif
-# for filepath in pathlib.Path('images-webp').iterdir():
-#     with Image.open(filepath) as image:
-#         image.save(pathlib.Path('images-webp-convert') / filepath.with_suffix('.avif').name)
 
 # # 3. cut item.avif
 # with open('recipe/item.json') as f:
@@ -41,53 +24,6 @@ from PIL import Image
 #         print(f'{item['name']}: {x}, {y}')
 #         subimage = image.crop((y * 64, x * 64, y * 64 + 64, x * 64 + 64))
 #         subimage.save(f'images-cut-avif/{item['name']}.avif')
-
-# # 4. cut item.png
-# with open('recipe/item.json') as f:
-#     items = json.load(f)
-# with Image.open('recipe/item.png') as image:
-#     for item in items:
-#         x, y = item['icon'].split(',')
-#         x, y = int(x), int(y)
-#         print(f'{item['name']}: {x}, {y}')
-#         subimage = image.crop((y * 64, x * 64, y * 64 + 64, x * 64 + 64))
-#         subimage.save(f'images-cut-png/{item['name']}.avif')
-
-# # 5. original image
-# with Image.open('images-original/钢块.png') as image:
-#     # image.save('images-original-convert/赤铜块.avif')
-#     image2 = image.resize((64, 64))
-#     image2.save('images-original-scale-convert/钢块.avif')
-
-# CONCLUSION no difference between all approaches
-# windows photo viewer has bug to support these avif formats
-
-# convert to base85 encoded text and store in json
-# images = {}
-# for filepath in pathlib.Path('images-cut-avif').iterdir():
-#     with open(filepath, 'rb') as f:
-#         images[filepath.stem] = base64.a85encode(f.read()).decode()
-# with open('recipe/icon.json', 'w') as f:
-#     f.write(json.dumps(images, ensure_ascii=False, indent=2))
-
-# with open('recipe/item.json') as f:
-#     items = json.load(f)
-# sb = '图标:\n'
-# with Image.open('recipe/item.avif') as image:
-#     for item in items:
-#         x, y = item['icon'].split(',')
-#         x, y = int(x), int(y)
-#         print(f'{item['name']}: {x}, {y}')
-#         subimage = image.crop((y * 64, x * 64, y * 64 + 64, x * 64 + 64))
-#         with io.BytesIO() as f:
-#             subimage.save(f, format='AVIF')
-#             sb += '  ' + item['name'] + ': ' + base64.b85encode(f.getvalue()).decode() + '\n'
-# with open('recipe/icon.yml', 'w') as f:
-#     f.write(sb)
-
-# TODO make-icon.py new: read .png files in data directory and resize and convert format to avif and store in temp.txt file
-#      make-icon.py extract {itemname}: extract item icon and put in data directory
-#      make-icon.py build: build item.avif spirit sheet
 
 # manually put some image files in data directory, resize and convert to avif and store in temporary new.yml file
 def import_images():
@@ -121,10 +57,41 @@ def extract_image(item_name):
                     return
     print(f'not found item name {item_name}?')
 
+def build_spirit_sheet():
+    items = [] # (name, icon string, [grid x, grid y])[]
+    for filepath in pathlib.Path('recipe/data').iterdir():
+        if filepath.suffix == '.yml':
+            with open(filepath) as f:
+                datafile = yaml.load(f, Loader=yaml.CLoader)
+                if '图标' in datafile:
+                    # TODO this .items, or the yaml.load seems do not preserve dict order
+                    for item_name, item_icon in datafile['图标'].items():
+                        items.append((item_name, item_icon, [0, 0]))
+    grid_width = int(math.ceil(len(items) ** 0.5))
+    grid_height = grid_width if len(items) > grid_width * (grid_width - 1) else grid_width - 1
+    with Image.new('RGBA', (grid_width * 64, grid_height * 64), (0, 0, 0, 0)) as result_image:
+        for index, (item_name, item_icon_encoded, coordinate) in enumerate(items):
+            # the old code (if you blame this file and find in make-icon.rs) use a strange layout
+            # to wind the icons from top level corner gradually, that's because old data structure
+            # persists icon position information so I want to avoid changing old item's coordinate,
+            # but now this coordinate is generated dynamically and not tracked so use a simple one
+            # by one line by line layout
+            coordinate[0] = int(math.floor(index / grid_width))
+            coordinate[1] = index - grid_width * coordinate[0]
+            # print(f'{item_name}: {coordinate}')
+            with io.BytesIO(base64.b85decode(item_icon_encoded)) as item_bytes:
+                with Image.open(item_bytes) as item_image:
+                    result_image.paste(item_image, (64 * coordinate[1], 64 * coordinate[0]))
+        print('generate build/item.avif')
+        result_image.save('build/item.avif')
+    print('write build/item.json')
+    with open('build/item.json', 'w') as f:
+        f.write('[\n  ' + ',\n  '.join([f'{{"name":"{name}","icon":[{coordinate[0]},{coordinate[1]}]}}' for name, _, coordinate in items]) + '\n]')
+
 if len(sys.argv) > 1 and sys.argv[1] == 'new':
     import_images()
 elif len(sys.argv) > 1 and sys.argv[1] == 'build':
-    1
+    build_spirit_sheet()
 elif len(sys.argv) > 2 and sys.argv[1] == 'extract':
     extract_image(sys.argv[2])
 else:

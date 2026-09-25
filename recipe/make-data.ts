@@ -29,7 +29,7 @@ interface DataContext {
     environments: string[],
 }
 
-function processData(cx: DataContext, filename: string, originalContent: string) {
+function processDataFile(cx: DataContext, filename: string, originalContent: string) {
 
     const newDataFile: {
         配方: Record<string, string>,
@@ -203,46 +203,24 @@ const cx: DataContext = {
 };
 for (const filename of (await fs.readdir('recipe/data')).sort((f1, f2) => f1.localeCompare(f2))) {
     if (filename.startsWith('v') && filename.endsWith('.yml')) {
-        processData(cx, filename, await fs.readFile(path.join('recipe', 'data', filename), 'utf-8'));
+        processDataFile(cx, filename, await fs.readFile(path.join('recipe', 'data', filename), 'utf-8'));
     }
 }
 
-const olddata1 = yaml.parse(await fs.readFile('recipe/data.yml', 'utf-8'));
-for (const recipeName of Object.keys(olddata1.配方)) {
-    // console.log(recipeName);
-    if (!cx.recipes.some(r => r.name == recipeName)) {
-        console.log(`old recipe ${recipeName} not found?`);
-    }
-}
-const olddata2 = JSON.parse(await fs.readFile('recipe/item.json', 'utf-8'));
-for (const olditem of olddata2) {
-    // console.log(olditem.name);
-    if (!cx.items.some(i => i.name == olditem.name)) {
-        console.log(`old item ${olditem.name} not found?`);
-    }
-}
-
-    // const resultdata = {
-    //     items: [], // TODO coordinates
-    //     recipes: recipes.map(r => ({
-    //         name: r.name,
-    //         machine: r.machine,
-    //         time: r.time == 2 ? undefined : r.time,
-    //         vibe: r.vibe,
-    //         inputs: r.inputs.map(i => ({
-    //             name: i.name,
-    //             count: i.count == 1 ? undefined : i.count,
-    //         })),
-    //         outputs: r.outputs.map(o => ({
-    //             name: o.name,
-    //             count: o.count == 1 ? undefined : o.count,
-    //         })),
-    //     })),
-    // };
-    // let sb = '';
-    // sb += '{"items":[\n';
-    // sb += '],"recipes":[\n  ';
-    // sb += resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ');
-    // sb += '\n]}';
-    // return sb;
-
+const resultdata = {
+    recipes: cx.recipes.map(r => ({
+        name: r.name,
+        machine: r.machine,
+        time: r.time == 2 ? undefined : r.time,
+        vibe: r.vibe,
+        inputs: r.inputs.map(i => ({
+            name: i.name,
+            count: i.count == 1 ? undefined : i.count,
+        })),
+        outputs: r.outputs.map(o => ({
+            name: o.name,
+            count: o.count == 1 ? undefined : o.count,
+        })),
+    })),
+};
+await fs.writeFile('build/recipe.json', '[\n  ' + resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
