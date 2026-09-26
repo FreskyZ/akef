@@ -27,6 +27,7 @@ from PIL import Image
 #         subimage = image.crop((y * 64, x * 64, y * 64 + 64, x * 64 + 64))
 #         subimage.save(f'images-cut-avif/{item['name']}.avif')
 
+UNIT_SIZE = 40
 # manually put some image files in data directory, resize and convert to avif and store in temporary new.yml file
 def import_images():
     count = 0
@@ -35,7 +36,7 @@ def import_images():
         if filepath.suffix == '.png':
             count += 1
             with Image.open(filepath) as image:
-                small_image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                small_image = image.resize((UNIT_SIZE, UNIT_SIZE), Image.Resampling.LANCZOS)
                 with io.BytesIO() as f:
                     small_image.save(f, format='AVIF')
                     sb += f'  {filepath.stem}: {base64.b85encode(f.getvalue()).decode()}\n'
@@ -72,7 +73,7 @@ def build_spirit_sheet():
     items.sort(key=lambda i: i[0].encode('utf-8'))
     grid_width = int(math.ceil(len(items) ** 0.5))
     grid_height = grid_width if len(items) > grid_width * (grid_width - 1) else grid_width - 1
-    with Image.new('RGBA', (grid_width * 64, grid_height * 64), (0, 0, 0, 0)) as result_image:
+    with Image.new('RGBA', (grid_width * UNIT_SIZE, grid_height * UNIT_SIZE), (0, 0, 0, 0)) as result_image:
         for index, (item_name, item_icon_encoded, coordinate) in enumerate(items):
             # the old code (if you blame this file and find in make-icon.rs) use a strange layout
             # to wind the icons from top level corner gradually, that's because old data structure
@@ -84,7 +85,7 @@ def build_spirit_sheet():
             # print(f'{item_name}: {coordinate}')
             with io.BytesIO(base64.b85decode(item_icon_encoded)) as item_bytes:
                 with Image.open(item_bytes) as item_image:
-                    result_image.paste(item_image, (64 * coordinate[1], 64 * coordinate[0]))
+                    result_image.paste(item_image, (UNIT_SIZE * coordinate[1], UNIT_SIZE * coordinate[0]))
         print('make-icon.py: generate build/item.avif')
         result_image.save('build/item.avif')
     print('make-icon.py: write build/item.json')
@@ -98,11 +99,11 @@ def build_spirit_sheet():
         sb = sb[:-2] + '\n]'
         f.write(sb)
 
-if len(sys.argv) > 1 and sys.argv[1] == 'new':
+if len(sys.argv) > 1 and sys.argv[1] == 'add':
     import_images()
 elif len(sys.argv) > 1 and sys.argv[1] == 'build':
     build_spirit_sheet()
 elif len(sys.argv) > 2 and sys.argv[1] == 'extract':
     extract_image(sys.argv[2])
 else:
-    print('USAGE: make-icon.py new | build | extract ITEMNAME')
+    print('USAGE: make-icon.py add | build | extract ITEMNAME')

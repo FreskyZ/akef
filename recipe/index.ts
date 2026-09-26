@@ -20,7 +20,7 @@ const pagedata = (window as any)['thepagedata'] as {
 function calculateItemImageSize(count: number) {
     const gridWidth = Math.ceil(Math.sqrt(count));
     const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth - 1 : gridWidth;
-    return [gridWidth * 64, gridHeight * 64];
+    return [gridWidth * 40, gridHeight * 40];
 }
 const itemImageSize = calculateItemImageSize(pagedata.items.length);
 
@@ -40,18 +40,15 @@ function setupNavigationBar() {
         // imageElement.alt = item.name;
         imageElement.title = item.name;
         imageElement.style.backgroundImage = `url("./item.avif")`;
-        // TODO shrink to 40, then convert original item.avif to use 40 instead of 64
-        imageElement.style.backgroundSize = `${itemImageSize[0] * 3/4}px ${itemImageSize[1] * 3/4}px`;
-        imageElement.style.backgroundPosition = `${itemImageSize[0] * 3/4 - +item.icon[1] * 48 + 6}px ${itemImageSize[1] * 3/4 - +item.icon[0] * 48 + 6}px`;
+        imageElement.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
+        // TODO why do this only work with right+bottom?
+        // TODO why does y need x36 not x40
+        imageElement.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
         nameElement.innerText = item.name;
         itemElement.appendChild(nameElement);
-        const descriptionElement = document.createElement('div');
-        descriptionElement.className = 'description';
-        descriptionElement.innerText = 'description';
-        itemElement.appendChild(descriptionElement);
         elements.itemList.appendChild(itemElement);
         itemElement.addEventListener('click', () => handleToggleOpen(item));
     }
@@ -313,12 +310,6 @@ const ClockIcon = [
     "M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z",
     "M686.7 638.6L544.1 535.5V288c0-4.4-3.6-8-8-8H488c-4.4 0-8 3.6-8 8v275.4c0 2.6 1.2 5 3.3 6.5l165.4 120.6c3.6 2.6 8.6 1.8 11.2-1.7l28.6-39c2.6-3.7 1.8-8.7-1.8-11.2z",
 ];
-const ReloadIcon = [
-    "M909.1 209.3l-56.4 44.1C775.8 155.1 656.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c181.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 " +
-    "8 0 00-10.1 4.8c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 829c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 755.2a342.16 " +
-    "342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9c17.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 133.8-27 46.5 0 91.5 9.1 133.8 27a341.5 " +
-    "341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 27.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6.6-7.8-10.3-13-6.2z",
-];
 const ProductIcon = [
     "M464 144a16 16 0 0116 16v304a16 16 0 01-16 16H160a16 16 0 01-16-16V160a16 16 0 0116-16zm-52 68H212v200h200zm493.33 87.69a16 16 0 010 22.62L724.31 503.33a16 16 0 01-22.62 0L520.67 322.31a16 " +
     "16 0 010-22.62l181.02-181.02a16 16 0 0122.62 0zm-84.85 11.3L713 203.53 605.52 311 713 418.48zM464 544a16 16 0 0116 16v304a16 16 0 01-16 16H160a16 16 0 01-16-16V560a16 16 0 0116-16zm-52 " +
@@ -347,12 +338,10 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
 }
 function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
     element.style.backgroundImage = `url("./item.avif")`;
-    element.style.backgroundSize = `${itemImageSize[0] * 40/64}px ${itemImageSize[1] * 40/64}px`;
-    element.style.backgroundPosition = `${itemImageSize[0] * 40/64 - +item.icon[1] * 40 + 6}px ${itemImageSize[1] * 40/64 - +item.icon[0] * 40 + 6}px`;
+    element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
+    element.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
     element.style.width = element.style.height = `${size}px`;
     // element.alt = item.name;
-    // element.src = pagedata.icons[item.id];
-    // element.width = element.height = size;
 }
 
 function setupDragMove(element: HTMLDivElement) {

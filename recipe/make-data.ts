@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises';
+import npfs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import yaml from 'yaml';
 
 // validate new dataset against existing data
@@ -236,3 +239,39 @@ const resultdata = {
 };
 console.log(`make-data.ts: write build/recipe.json`);
 await fs.writeFile('build/recipe.json', '[\n  ' + resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+
+// this is used when migrating from 64px grid size to 40px grid size,
+// you cannot convert 64px image to 40px image because that will be too much loss,
+// use this to collect all item's 396px icon, store locally and use manual import image workflow to update images
+async function migrate() {
+    // 1. collect images from webpage
+    // althoug skland wiki webpage is very antihuman and antiai, you can still get by one line js
+    // JSON.stringify(Array.from(document.querySelectorAll('div.sc-fGusXT.hgfSEo')).map(e => ({
+    //     name: e.childNodes[1].childNodes[0].innerText,
+    //     icon: e.childNodes[0].childNodes[0].childNodes[0].childNodes[1].src,
+    // })));
+    // // copy text and save in icon/icon.json
+    // // 哦牛逼这么简单的代码还让我发现错误了，手动修改实验息壤铜骨架为实验息壤铜骨骼
+
+    // // 2. download all
+    const icondata = JSON.parse(await fs.readFile('icon/icon.json', 'utf-8'));
+    // download one by one to avoid being rejected by cdn
+    for (const { name, icon } of icondata) {
+        if (cx.items.includes(name)) {
+            const response = await fetch(icon);
+            const fileStream = npfs.createWriteStream(`icon/${name}.png`, { flags: 'wx' });
+            await finished(Readable.fromWeb(response.body).pipe(fileStream));
+        }
+    }
+
+    // // 3.0. in this case, need to update make-icon.py for new grid size
+    // // 3.1. choose a data file, copy image into data directory
+    // const datafile = yaml.parse(await fs.readFile('recipe/data/v1.5.yml', 'utf-8'));
+    // for (const itemName of Object.keys(datafile.图标)) {
+    //     await fs.copyFile(`icon/${itemName}.png`, `recipe/data/${itemName}.png`);
+    // }
+    // // 3.2. uv run recipe/make-icon.py add
+    // // 3.3. manually move from data/new.yml to selected v.yml
+    // // 3.4. rm recipe/data/*.png
+    // // 3.5. specify other data file and run again
+}

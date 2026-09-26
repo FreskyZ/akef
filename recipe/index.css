@@ -97,25 +97,14 @@ nav li.active:hover {
     /* background-color: lightcoral; */
     background: linear-gradient(to right, var(--highlight-color) 0, var(--highlight-color) 4px, #ddd 8px, #ddd 100%);
 }
-nav li > img {
-    padding: 4px;
-    grid-area: 1/1/4/1;
-}
 nav li > div.image {
-    padding: 4px;
+    /* TODO shrink the overall li instead of margin this */
+    margin: 8px;
     grid-area: 1/1/4/1;
 }
 nav li > div.name {
     margin-left: 8px;
     margin-top: 8px
-}
-nav li > div.description {
-    margin-left: 8px;
-    font-size: 10px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 192px;
 }
 
 /* main container */
