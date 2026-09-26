@@ -12,6 +12,18 @@ interface RecipeData {
     outputs: { name: string, count?: number }[],
 }
 
+const pagedata = (window as any)['thepagedata'] as {
+    items: ItemData[],
+    recipes: RecipeData[],
+};
+// spirit sheet size
+function calculateItemImageSize(count: number) {
+    const gridWidth = Math.ceil(Math.sqrt(count));
+    const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth - 1 : gridWidth;
+    return [gridWidth * 64, gridHeight * 64];
+}
+const itemImageSize = calculateItemImageSize(pagedata.items.length);
+
 const elements = {
     itemList: document.querySelector('nav ul') as HTMLUListElement,
     searchInput: document.querySelector('div#nav-header>input') as HTMLInputElement,
@@ -19,12 +31,6 @@ const elements = {
     sortButton: document.querySelector('button#sort') as HTMLButtonElement,
     clearButton: document.querySelector('button#clear') as HTMLButtonElement,
 };
-
-const pagedata = (window as any)['thepagedata'] as {
-    items: ItemData[],
-    recipes: RecipeData[],
-};
-
 function setupNavigationBar() {
     for (const item of pagedata.items) {
         const itemElement = document.createElement('li');
@@ -34,11 +40,9 @@ function setupNavigationBar() {
         // imageElement.alt = item.name;
         imageElement.title = item.name;
         imageElement.style.backgroundImage = `url("./item.avif")`;
-        imageElement.style.backgroundSize = `${704 * 3/4}px ${704 * 3/4}px`;
-        imageElement.style.backgroundPosition = `${704 * 3/4 - +item.icon[1] * 48 + 6}px ${704 * 3/4 - +item.icon[0] * 48 + 6}px`;
-        // imageElement.src = pagedata.icons[item.id];
-        // imageElement.width = 48;
-        // imageElement.height = 48;
+        // TODO shrink to 40, then convert original item.avif to use 40 instead of 64
+        imageElement.style.backgroundSize = `${itemImageSize[0] * 3/4}px ${itemImageSize[1] * 3/4}px`;
+        imageElement.style.backgroundPosition = `${itemImageSize[0] * 3/4 - +item.icon[1] * 48 + 6}px ${itemImageSize[1] * 3/4 - +item.icon[0] * 48 + 6}px`;
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
@@ -59,7 +63,7 @@ function setupNavigationBar() {
                 itemElement.style.display = 'grid';
             } else {
                 const item = pagedata.items.find(i => i.name == itemElement.dataset['id']);
-                const found = item.name.includes(elements.searchInput.value) // || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
+                const found = item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
                 itemElement.style.display = found ? 'grid' : 'none';
             }
         }
@@ -342,11 +346,11 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
     return svgElement;
 }
 function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
-    // element.alt = item.name;
     element.style.backgroundImage = `url("./item.avif")`;
-    element.style.backgroundSize = `${704 * 40/64}px ${704 * 40/64}px`;
-    element.style.backgroundPosition = `${704 * 40/64 - +item.icon[1] * 40 + 6}px ${704 * 40/64 - +item.icon[0] * 40 + 6}px`;
+    element.style.backgroundSize = `${itemImageSize[0] * 40/64}px ${itemImageSize[1] * 40/64}px`;
+    element.style.backgroundPosition = `${itemImageSize[0] * 40/64 - +item.icon[1] * 40 + 6}px ${itemImageSize[1] * 40/64 - +item.icon[0] * 40 + 6}px`;
     element.style.width = element.style.height = `${size}px`;
+    // element.alt = item.name;
     // element.src = pagedata.icons[item.id];
     // element.width = element.height = size;
 }
@@ -643,6 +647,7 @@ function updateItemList() {
     elements.sortButton.title = sortMethodDescription[sortMethod];
     elements.sortButton.style.background = sortMethod == 'active' ? 'lightgray' : '';
     if (sortMethod == 'normal') {
+        // TODO localecompare compatibility issue again, fix by remember original order
         items.sort((i1, i2) => i1.dataset['id'].localeCompare(i2.dataset['id']));
     } else {
         items.sort((i1, i2) => {

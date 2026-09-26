@@ -219,7 +219,7 @@ for (const filename of (await fs.readdir('recipe/data')).sort((f1, f2) => f1.loc
 }
 
 const resultdata = {
-    recipes: cx.recipes.map(r => ({
+    recipes: cx.recipes.sort((r1, r2) => Buffer.from(r1.name).compare(Buffer.from(r2.name))).map(r => ({
         name: r.name,
         machine: r.machine,
         time: r.time == 2 ? undefined : r.time,
@@ -234,4 +234,5 @@ const resultdata = {
         })),
     })),
 };
+console.log(`make-data.ts: write build/recipe.json`);
 await fs.writeFile('build/recipe.json', '[\n  ' + resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');

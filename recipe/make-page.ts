@@ -3,11 +3,6 @@ import { styleText } from 'node:util';
 import { minify } from 'terser';
 import ts from 'typescript';
 
-function mergeData(itemOriginalContent: string, recipeOriginalContent: string) {
-    // ???
-    return `{"items":${itemOriginalContent},"recipes":${recipeOriginalContent}}`;
-}
-
 function minifycss(originalContent: string) {
     // as my simple css is very regular that only contain plain rules .*\s\{attribute*\} and plain attributes .*:\s.*;
     // so can use simple string manipulation operation to minify
@@ -46,7 +41,7 @@ function minifycss(originalContent: string) {
 
 // see freskyz/fine script/components/typescript.ts function transpile
 // return null for not ok
-async function transpileRuntimeScript(): Promise<string> {
+async function transpileScript(): Promise<string> {
 
     const program = ts.createProgram(['recipe/index.ts'], {
         lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
@@ -90,7 +85,7 @@ async function transpileRuntimeScript(): Promise<string> {
         transpileResult += '\n';
         // import data, if you import data in typescript, it will be inlined
         transpileResult = transpileResult.replace("const pagedata = window['thepagedata'];\n", '');
-        // transpileResult = "import pagedata from './data.json' with { type: 'json' };\n" + transpileResult;
+        transpileResult = "import pagedata from './data.json' with { type: 'json' };\n" + transpileResult;
     }
     
     const diagnostics = emitResult.diagnostics;
@@ -109,7 +104,7 @@ async function transpileRuntimeScript(): Promise<string> {
     }
 
     const success = diagnostics.length == 0;
-    console.log(`index.js completed with ${summary}`);
+    console.log(`make-page.ts: index.js completed with ${summary}`);
     for (const { category, code, messageText, file, start } of diagnostics) {
         const displayColor = ({
             [ts.DiagnosticCategory.Warning]: 'red',
@@ -143,15 +138,22 @@ async function transpileRuntimeScript(): Promise<string> {
     return minifyResult.code;
 }
 
-const datafile = mergeData(
-    await fs.readFile('build/item.json', 'utf-8'),
-    await fs.readFile('build/recipe.json', 'utf-8'),
-);
-const minifyResult = minifycss(await fs.readFile('recipe/index.css', 'utf-8'));
-const runtimescript = await transpileRuntimeScript();
+const inputFiles = await Promise.all([
+    'build/item.json',
+    'build/recipe.json',
+    'recipe/index.css',
+    'recipe/index.html',
+].map(n => fs.readFile(n, 'utf-8')));
 
-let builder = await fs.readFile('recipe/index.html', 'utf-8');
-builder = builder.replace('<style></style>', '<style>\n' + minifyResult + '\n  </style>');
-builder = builder.replace('<script></script>', '<script type="module">\n' + `const pagedata = ${datafile};${runtimescript}` + '\n  </script>');
-console.log('write index.html');
-await fs.writeFile('build/index.html', builder);
+console.log(`make-page.ts: make data.json`);
+const pagedata = `{"items":${inputFiles[0]},"recipes":${inputFiles[1]}}`; // ?
+console.log(`make-page.ts: minify source code`);
+const stylesheet = minifycss(inputFiles[2]);
+const script = await transpileScript();
+console.log(`make-page.ts: build index.html`);
+const html = inputFiles[3]
+    .replace('<style></style>', '<style>\n' + stylesheet + '\n  </style>')
+    .replace('<script></script>', '<script type="module">\n' + script + '\n  </script>');
+console.log(`make-page.ts: write data.json and index.html`);
+await fs.writeFile('build/data.json', pagedata);
+await fs.writeFile('build/index.html', html);

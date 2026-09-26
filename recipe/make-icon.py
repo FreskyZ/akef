@@ -2,6 +2,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "pillow>=12.3.0",
+#     "pypinyin>=0.55.0",
 #     "pyyaml>=6.0.3",
 # ]
 # ///
@@ -11,6 +12,7 @@
 # uv run example.py
 
 import sys, json, base64, pathlib, io, math
+import pypinyin
 import yaml
 from PIL import Image
 
@@ -64,9 +66,10 @@ def build_spirit_sheet():
             with open(filepath) as f:
                 datafile = yaml.load(f, Loader=yaml.CLoader)
                 if '图标' in datafile:
-                    # TODO this .items, or the yaml.load seems do not preserve dict order
+                    # TODO this .items, or the yaml.load seems do not preserve dict order, fix by order result item list by utf8 bytes
                     for item_name, item_icon in datafile['图标'].items():
                         items.append((item_name, item_icon, [0, 0]))
+    items.sort(key=lambda i: i[0].encode('utf-8'))
     grid_width = int(math.ceil(len(items) ** 0.5))
     grid_height = grid_width if len(items) > grid_width * (grid_width - 1) else grid_width - 1
     with Image.new('RGBA', (grid_width * 64, grid_height * 64), (0, 0, 0, 0)) as result_image:
@@ -82,11 +85,18 @@ def build_spirit_sheet():
             with io.BytesIO(base64.b85decode(item_icon_encoded)) as item_bytes:
                 with Image.open(item_bytes) as item_image:
                     result_image.paste(item_image, (64 * coordinate[1], 64 * coordinate[0]))
-        print('generate build/item.avif')
+        print('make-icon.py: generate build/item.avif')
         result_image.save('build/item.avif')
-    print('write build/item.json')
+    print('make-icon.py: write build/item.json')
     with open('build/item.json', 'w') as f:
-        f.write('[\n  ' + ',\n  '.join([f'{{"name":"{name}","icon":[{coordinate[0]},{coordinate[1]}]}}' for name, _, coordinate in items]) + '\n]')
+        sb = '[\n'
+        for name, _, coordinate in items:
+            # add pinyin here, python is too good at nlp so pinyin package
+            # is reasonably reliable, compare to nodejs and rust's search result
+            pinyin = ''.join([c[0] for c in pypinyin.pinyin(name, style=pypinyin.Style.NORMAL)])
+            sb += f'  {{"name":"{name}","pinyin":"{pinyin}","icon":[{coordinate[0]},{coordinate[1]}]}},\n'
+        sb = sb[:-2] + '\n]'
+        f.write(sb)
 
 if len(sys.argv) > 1 and sys.argv[1] == 'new':
     import_images()
