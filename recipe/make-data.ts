@@ -167,6 +167,7 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
             console.log(`${filename}: item ${item.name}: not found in recipe outputs need to be declared in plants or minerals`);
         }
     }
+    const serializedRecipes: { name: string, value: string }[] = [];
     for (const recipe of cx.recipes) {
         if (recipe.machine == '种植机' || recipe.machine == '采种机') {
             console.log(`${filename}: recipe ${recipe.name}: don't add plant recipes`);
@@ -187,9 +188,19 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
         )) {
             console.log(`${filename}: recipe ${recipe.name}: don't add pour bottle recipes`);
         }
+
+        const serialized = [
+            recipe.inputs.map(i => `${i.name},${i.count}`).join(','),
+            recipe.outputs.map(i => `${i.name},${i.count}`).join(','),
+            recipe.machine, recipe.vibe, recipe.time,
+        ].filter(x => x).join(',');
+        const identical = serializedRecipes.find(r => r.value == serialized);
+        if (identical) {
+            console.log(`${filename}: recipe ${recipe.name} is identical to ${identical.name}: ${identical.value}`);
+        } else {
+            serializedRecipes.push({ name: recipe.name, value: serialized });
+        }
     }
-    // TODO identical recipe check
-    // TODO goes through wiki's facility pages to confirm all recorded
 }
 
 const cx: DataContext = {

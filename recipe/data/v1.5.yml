@@ -1,14 +1,18 @@
 # v1.5 2026-09-02 没别的更新，息壤龙泡泡
 
 配方:
-  # 这个版本只有活动
-  重息壤龙泡泡生产: 实验龙泡泡重壳 + 实验息壤铜骨骼 =>[封装机+10s]=> 重息壤龙泡泡
-  实验龙泡泡重壳生产: 实验重息壤块 + 5惰气 =>[塑形机+10s]=> 实验龙泡泡重壳
+  实验息壤块生产: 息壤 =>[精炼炉]=> 实验息壤块
+  # 塑形机别的配方都是瓶，所以龙泡泡外壳=瓶
+  实验龙泡泡外壳生产: 实验息壤块 =>[塑形机]=> 实验龙泡泡外壳
+  实验铜骨骼生产: 4赤铜零件 + 息壤 =>[封装机]=> 实验铜骨骼
+  息壤龙泡泡生产: 5实验龙泡泡外壳 + 5实验铜骨骼 =>[封装机+10s]=> 息壤龙泡泡
   实验重息壤块生产: 重息壤 =>[精炼炉+10s]=> 实验重息壤块
-  实验息壤铜骨骼生产: 实验息壤铜零件 + 重息壤 =>[封装机+10s]=> 实验息壤铜骨骼
-  实验息壤铜零件生产: 5实验息壤铜锭 =>[配件机+10s]=> 实验息壤铜零件
-  实验息壤铜锭生产: 实验息壤铜气 =>[固气转化机]=> 实验息壤铜锭
+  实验龙泡泡重壳生产: 实验重息壤块 + 5惰气 =>[塑形机+10s]=> 实验龙泡泡重壳
   实验息壤铜气生产: 2气态赤铜 + 息壤气 =>[气体反应炉+惰气环境]=> 实验息壤铜气
+  实验息壤铜锭生产: 实验息壤铜气 =>[固气转化机]=> 实验息壤铜锭
+  实验息壤铜零件生产: 5实验息壤铜锭 =>[配件机+10s]=> 实验息壤铜零件
+  实验息壤铜骨骼生产: 实验息壤铜零件 + 重息壤 =>[封装机+10s]=> 实验息壤铜骨骼
+  重息壤龙泡泡生产: 实验龙泡泡重壳 + 实验息壤铜骨骼 =>[封装机+10s]=> 重息壤龙泡泡
 
 图标:
   重息壤龙泡泡: 0000WW^{RQVRmU|00000VRmU|ZE0pPZE0a<O+hh20004oZDn*}000000000XXk=`10000000000aA{+7000000000000000000004sdC7Z2$lO00031001m$Y;R)#0000)000620RR910RR950RR95IsgIy0003100FK500L70002U1X>Mi!000000ssI28fk83WdZ;I000310AY48F+*=`Z*l+t000_kZf0cy000000ssJEb}%tPY;b5{000008fkK6W&i*H000004q<h8YybiP0RRC2006^jaB^?}005n7aAR)(000zeb8uw<00000002M$002M$000nhX?SS>000032nYxO000bOb}>VN01N;C000wXZ)|dIV{CW;0RRmE27mwn01j|zcxeCt000390000CVRkV?fdCu;0000uVRd*z00000b#iVxZE$60I&E-eXF@t-X=89Yb9r-gWo>ghVRd+EY-wR~c{*WiaA;uw0000UX>e^}0000000002009I60)qqq0t5jCh6exu29<4OVRRAz3I-SzfBl6(GR6c&00RtA-7AFq0q$*|@H(uEc9ucDNKy9DR`R9qWE-wO&dN@^3`tuQht_HP<xswhITGc?Up73#9gwlV*O2y--~>Uh`ms9i2d4gj8Bu?EIfE097LtkVc%@K%<3YQ*l~M@yD#{ebNMMNsJ~;kkHI=ewGwGc5W3}rsH{ohd4G0jOwbVJzfel#d0Wvh{)#j&+>`g+B3upWWt(a8|cIbXoWcCWdsyqD1!1$LW-LB=DEHKkR-EnMSz#;H^keH5r7rnH<bH-s*&009-cm}RuFTtI7lXcBu8PvaO7Q#2j1JOt)ex{#$150F=^U%CKW#9(1b4G%BaqE6)YBN{0%%RIehzNnBaZi|Do_#bfCA}M^8GHI$t#ea17apv7l^1%?t_kg$_rj$>$fx2LUp|A_o-1=QS<9VUxHI!Qb~KJbR*}dsw!6{KHV+drQb0L1t)LMY*5_8<3&75cy$GGIqrN#^=37lM&9H$ygoYw#E{G@02RinM=>@-WobLa)BnApw9ogcBL%(80Qic;jYjo}c^75Y}_$x-{;S3%2Ym%^oIeTZ)b|Mavnb|bAC+EXek^j(m@Tm^APEcWnSc;0qmJjn{2<ecjs1HK*okut@^(9zr@nTO9Jh(mmQ>Oy2<>;WcPVd??s$xq*+F443G(lf*`(fwTFpg^BA5DQ0s7pAYB2d`SEIg$hF;;9tY7Bf@Cs^?Y=(TbN!bEg$m5~hFWVA>a8<F0}p_wZXINNNc%yE&9fD!--2^bZB{h|UI4G1!-2o%SMhGY;y1oD6Y06^U<FqKwU9~l`OAj1|l1}c3(|F1$_ok#%ZnkU}mQQV%dfh7ZEI1ac#O;}|1LHZuUdsCErkR{GYx>)bk{GIQJUk$`1xf8p*iMXA;MI6X7CBxh9Mb<QBhCai{Fz5uN2bX(=wu62m;cqyTI^|dC5!ML0>*E7A@5{362Haw%)D3>jK90pJ9Q5@1eQXqt7Npd54Wq55cyC7Fj<dKES$CJ?O~}+Cmize;HX2!HTQ5@=#DylvMZbk>jKGYX%&51T?e#<w<n55u^@D&T#t^^^4ah#U<gnu^a7i*w<Gk?uLMno`{`9-b-mNf!O)S)=>`S}go%?0!kDQte5KujAJIdaf<E$*u*xl@t4zyN>)qPS$G{+2bhIFl-cemW~+1KX97RwUBaR4kHdI2b<y_g;~jU^pD!hsR|pu**f`9_@7n^%i#yRqV5yWZ~>Nzdx?&cmP#`j}<5zr{yD17vfc%rt8KwLBah{>}vji`p8R;j5M!6l{5d`Ln;IqqM=U?vM_FuA#S_1<f~dNJSM*l>L$am*b$hMF>9)s5^0=3@{qstIV&-AsJH7eBO^zg@!!*x{_n(K%<Emro9&|fFYR+xp$-LR+eho3jpz~b97pKliUt(!E*;Wx&-pFzH^}T&akj#hpv=;tJs^HJ1c_R_)kk7^-nND4)?R5#5)Ty*czBA$iLpQNQ}zzSg47M*xeUFOTfHy5%{y=8P1^Jvqu>r=NC3Po*0D*_eCowlp#TvIGThj*zgP9Tw_r|Y=anwi10>Mj%aRrO6ILdfdj4yGS4z?dDabw>I=g=F>$v5YTk@S;8uyh?J@>V&8~`Dmr)Rv%BuW5?Zu`99yU*l&Rc$~>xjX3f1C^{1)LxMj$7$+fxdd~JvP@#fjVy~whw81vDt~Z_;MybW78n-e)Q+}v_mIMdUghOVJI*#E+8!GvMQs3@dxFu;Zv0Z=^VdYm|78X**K=Jyr4vf9a#r1DiN_M!;Q-4A?ua}G%NK^ey-K`hoQ&PszNn?)6pD>UbOz87w>U-4d_1CjvvyTwCe0=!t&7vGJX<l%;7{s;WrzLP64_U^qBpt6JL*?u9b8qN3V=ht^2{TGiErK(c`Mj6Kz<4#uTer`-S%VTtKWXQq$$0SKieUPE1m(EYZ92av;&8D613ePx56TgwUI0cV?8+L(H;*p}zDFm*PC{Y6u~UtRyNA(Lh2|v<T9Fk^OO1f^me`?dSUoFmr5s!H+rGidQ&tlzIeNtwk_E6c<xNS7p$a{F*?U03m(>M&Bi1>s?ag^BISFN~3Y(#wKUAJZH?gA^$}3P4;&ku1cC7qBGb*!w7+1=*N14ktYg0f9a-(VHjhCWe@6f96g`

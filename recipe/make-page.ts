@@ -147,18 +147,11 @@ const datafile = mergeData(
     await fs.readFile('build/item.json', 'utf-8'),
     await fs.readFile('build/recipe.json', 'utf-8'),
 );
-// await fs.writeFile('build/data.json', data);
-// console.log(`write build/data.json`);
 const minifyResult = minifycss(await fs.readFile('recipe/index.css', 'utf-8'));
-// await fs.writeFile('build/index.css', minifyResult);
-// console.log(`write build/index.css`);
 const runtimescript = await transpileRuntimeScript();
-// await fs.writeFile('build/index.js', runtimescript);
-// console.log(`write build/index.js`);
 
 let builder = await fs.readFile('recipe/index.html', 'utf-8');
 builder = builder.replace('<style></style>', '<style>\n' + minifyResult + '\n  </style>');
 builder = builder.replace('<script></script>', '<script type="module">\n' + `const pagedata = ${datafile};${runtimescript}` + '\n  </script>');
 console.log('write index.html');
 await fs.writeFile('build/index.html', builder);
-
