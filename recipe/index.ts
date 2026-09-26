@@ -8,6 +8,7 @@ interface RecipeData {
     name: string,
     machine: string,
     time?: number,
+    vibe?: string,
     inputs: { name: string, count?: number }[],
     outputs: { name: string, count?: number }[],
 }
@@ -19,7 +20,7 @@ const pagedata = (window as any)['thepagedata'] as {
 // spirit sheet size
 function calculateItemImageSize(count: number) {
     const gridWidth = Math.ceil(Math.sqrt(count));
-    const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth - 1 : gridWidth;
+    const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth : gridWidth - 1;
     return [gridWidth * 40, gridHeight * 40];
 }
 const itemImageSize = calculateItemImageSize(pagedata.items.length);
@@ -41,9 +42,9 @@ function setupNavigationBar() {
         imageElement.title = item.name;
         imageElement.style.backgroundImage = `url("./item.avif")`;
         imageElement.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-        // TODO why do this only work with right+bottom?
-        // TODO why does y need x36 not x40
-        imageElement.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
+        // background-position is very mysterious
+        // https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/background-position
+        imageElement.style.backgroundPosition = `${-item.icon[1] * 40}px ${-item.icon[0] * 40}px`;
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
@@ -57,11 +58,11 @@ function setupNavigationBar() {
     elements.searchInput.addEventListener('change', () => {
         for (const itemElement of Array.from<HTMLLIElement>(elements.itemList.children as any)) {
             if (!elements.searchInput.value) {
-                itemElement.style.display = 'grid';
+                itemElement.style.display = 'flex';
             } else {
                 const item = pagedata.items.find(i => i.name == itemElement.dataset['id']);
                 const found = item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
-                itemElement.style.display = found ? 'grid' : 'none';
+                itemElement.style.display = found ? 'flex' : 'none';
             }
         }
     });
@@ -108,7 +109,7 @@ function collectRecipeTree(item: ItemData, path: string[]) {
         const possibleProductIds = pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name)).flatMap(r => r.outputs.map(r => r.name));
         itemNode.possibleProducts = Array.from(new Set(possibleProductIds)).map(name => pagedata.items.find(i => i.name == name));
     }
-    // ATTENTION this really gets deep 10? but you still need to handle 清水污水 related issues
+    // this was 10, but newer versions, namely 赫铜 technology really push pass 10
     if (path.length > 20) {
         throw new Error('unexpected too deep');
     }
@@ -117,13 +118,31 @@ function collectRecipeTree(item: ItemData, path: string[]) {
     if (item.name != '清水' || path.length == 0) {
         // exclude pour in normal dependency tree (allow in possible products)
         // ATTENTION HARDCODE ignore 反应池 recipes because 反应池 and 扩容反应池 is same
-        for (const recipe of pagedata.recipes.filter(r => r.machine != '反应池' && r.outputs.some(r => r.name == item.name))) {
-            itemNode.children.push({
-                data: recipe,
-                // feel free to duplicate depth, the layout algorithm completely don't use node.depth and even node name
-                depth: path.length,
-                children: recipe.inputs.map(ingredient => collectRecipeTree(pagedata.items.find(i => i.name == ingredient.name), [...path, item.name])),
-            });
+        // ATTENTION temporary disable 息壤's old recipe and I guess this will simplify a lot of things
+        for (const recipe of pagedata.recipes
+            .filter(r => r.machine != '反应池' && r.outputs.some(r => r.name == item.name))
+            .filter(r => r.name != '息壤生产')
+        ) {
+            if (item.name == '污水') {
+                itemNode.children.push({
+                    data: recipe,
+                    depth: path.length,
+                    children: recipe.inputs
+                        // ATTENTION TEMP make 污水's children stop at first level, this should simplify a lot of things
+                        // ATTENTION TODO 固气转化机 and 液气转化机 also need this
+                        .map(input => collectRecipeTree(pagedata.items.find(i => i.name == input.name), [...path, input.name])),
+                });
+            } else {
+                itemNode.children.push({
+                    data: recipe,
+                    // feel free to duplicate depth, the layout algorithm completely don't use node.depth and even node name
+                    depth: path.length,
+                    children: recipe.inputs
+                        // ATTENTION TEMP bottle+fluid item not in pagedata.items, display a bottle for now
+                        .map(ingredient => ingredient.name.includes('-') ? ingredient.name.split('-')[0] : ingredient.name)
+                        .map(itemName => collectRecipeTree(pagedata.items.find(i => i.name == itemName), [...path, item.name])),
+                });
+            }
         }
     }
     return itemNode;
@@ -339,7 +358,7 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
 function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
     element.style.backgroundImage = `url("./item.avif")`;
     element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-    element.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
+    element.style.backgroundPosition = `-${item.icon[1] * 40}px -${item.icon[0] * 40}px`;
     element.style.width = element.style.height = `${size}px`;
     // element.alt = item.name;
 }
@@ -456,6 +475,11 @@ function drawRecipeTree(root: ItemNode) {
     /* close */ j(panelElement, 'button', { className: 'close', innerText: 'X' },
         e => e.addEventListener('click', () => handleClosePanel(root.data.name)));
     /* title */ j(panelElement, 'span', { className: 'title', innerText: root.data.name });
+    /* config? */ j(panelElement, 'input', { className: 'config' }, e => {
+        e.addEventListener('change', () => {
+            console.log('input.config change, ', e.value);
+        });
+    });
 
     // try bfs to make element order in main element more clear
     let remainingItems: [ItemNode, string[]][] = [[root, []]]; // item and ancestor path
@@ -481,16 +505,17 @@ function drawRecipeTree(root: ItemNode) {
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
-        // TODO item image's hover border is missing
-        /* image */ j(itemElement, 'div', { className: 'image' }, e => {
-            setupImageElement(e, item.data);
+        const imageWrapperElement = j(itemElement, 'div', { className: 'image-wrapper' }, e => {
             if (item.data.name != root.data.name) {
                 e.addEventListener('click', () => handleOpenPanel(item.data));
             }
             e.addEventListener('mouseenter', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.add('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight')));
             e.addEventListener('mouseleave', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.remove('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight')));
+        });
+        /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => {
+            setupImageElement(e, item.data);
         });
         // item-node width 72 cannot fit in "bottle with liquid" names, add a container to allow more width
         /* name-container */ j(itemElement, 'div', { className: 'name' }, nameContainer => {
@@ -542,6 +567,7 @@ function drawRecipeTree(root: ItemNode) {
                     top: CellHeight * productPosition + 40,
                 }, e => e.addEventListener('click', () => handleOpenPanel(product)));
 
+                // TODO this also need image-wrapper
                 /* image */ j(productElement, 'div', { className: 'image' }, e => setupImageElement(e, product));
                 /* name container */ j(productElement, 'div', { className: 'name' }, nameContainer => {
                     /* name */ j(nameContainer, 'span', { innerText: product.name })
@@ -588,6 +614,13 @@ function drawRecipeTree(root: ItemNode) {
             }
     
             /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine });
+            // TODO consider add icon for them, or add style to machine name to indicate extra input
+            /* vibe */ if (recipe.data.vibe) {
+                j(recipeElement, 'span', { className: 'extra-input', innerText: `${recipe.data.vibe}环境 6/min` });
+            }
+            /* extra */ else if (recipe.data.machine == '固气转化机' || recipe.data.machine == '液气转化机') {
+                j(recipeElement, 'span', { className: 'extra-input', innerText: `+息壤气 6/min` });
+            }
 
             /* left connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line1' });
             /* right connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line2' });

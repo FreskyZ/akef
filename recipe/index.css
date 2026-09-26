@@ -80,9 +80,10 @@ nav ul {
     list-style-type: none;
 }
 nav li {
-    display: grid;
-    grid-template-rows: 36px 20px;
-    grid-template-columns: 56px 200px;
+    height: 40px;
+    width: 256px;
+    display: flex;
+    gap: 4px;
     cursor: pointer;
     border-radius: 4px;
 }
@@ -98,13 +99,11 @@ nav li.active:hover {
     background: linear-gradient(to right, var(--highlight-color) 0, var(--highlight-color) 4px, #ddd 8px, #ddd 100%);
 }
 nav li > div.image {
-    /* TODO shrink the overall li instead of margin this */
-    margin: 8px;
-    grid-area: 1/1/4/1;
+    width: 40px;
+    height: 40px;
 }
 nav li > div.name {
-    margin-left: 8px;
-    margin-top: 8px
+    line-height: 40px;
 }
 
 /* main container */
@@ -145,49 +144,6 @@ div.panel > span.title {
     line-height: 24px;
     padding: 4px;
 }
-div.panel > span.speed-container {
-    margin-left: 16px;
-}
-div.panel > span.speed-container > label {
-    font-size: 14px;
-    line-height: 24px;
-    padding: 4px;
-}
-div.panel > span.speed-container > input {
-    outline: none;
-    background: transparent;
-    border-width: 0 0 1px 0;
-    line-height: 16px;
-    /* width: 28px; */
-    field-sizing: content;
-    min-width: 12px;
-    text-align: right;
-    /* AI says these are more standard, amazingly chrome does not support these 
-    -webkit-appearance: textfield;
-    appearance: textfield; */
-}
-div.panel > span.speed-container > input::-webkit-outer-spin-button,
-div.panel > span.speed-container > input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-div.panel > span.speed-container > button.reset {
-    outline: none;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    padding: 0;
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-}
-div.panel > span.speed-container > button.reset:hover {
-    background: lightgray;
-}
-div.panel > span.speed-container > button.reset > svg {
-    width: 14px;
-    height: 14px;
-}
 
 /* item node, img, name, amount, connect lines */
 div.panel > div.item-node {
@@ -197,37 +153,26 @@ div.panel > div.item-node {
     grid-template-columns: 12px 48px 12px;
     cursor: default;
 }
-div.panel > div.item-node > img {
+div.panel > div.item-node > div.image-wrapper {
     grid-area: 1/2/1/2;
-    padding: 3.5px; /* why does this need 3.5px? */
+    padding: 4px; /* why does this need 3.5px? */
     border-radius: 4px;
     background-color: #d8d8d8;
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
 }
-div.panel > div.item-node:not(.main-item-node) > img {
+div.panel > div.item-node:not(.main-item-node) > div.image-wrapper {
     cursor: pointer;
 }
-div.panel > div.item-node > img.highlight,
-div.panel > div.main-item-node > img {
+div.panel > div.item-node > div.image-wrapper:hover,
+div.panel > div.item-node > div.image-wrapper.highlight,
+div.panel > div.main-item-node > div.image-wrapper {
     border: 2px solid var(--highlight-color);
     padding: 2px;
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
 }
-div.panel > div.item-node > div.image {
-    grid-area: 1/2/1/2;
-    padding: 3.5px; /* why does this need 3.5px? */
-    border-radius: 4px;
-    background-color: #d8d8d8;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
-}
-div.panel > div.item-node:not(.main-item-node) > div.image {
-    cursor: pointer;
-}
-div.panel > div.item-node > div.image.highlight,
-div.panel > div.main-item-node > div.image {
-    border: 2px solid var(--highlight-color);
-    padding: 2px;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+div.panel > div.item-node > div.image-wrapper > div.image {
+    width: 40px;
+    height: 40px;
 }
 div.panel > div.item-node > div.name {
     grid-area: 2/1/2/4;
@@ -326,7 +271,7 @@ div.panel > div.product-node {
     grid-template-columns: 12px 48px;
     cursor: default;
 }
-div.panel > div.product-node > img {
+div.panel > div.product-node > div.image {
     grid-area: 1/2/1/2;
     padding: 3.5px;
     border-radius: 4px;
@@ -334,7 +279,7 @@ div.panel > div.product-node > img {
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
     cursor: pointer;
 }
-div.panel > div.product-node > img:hover {
+div.panel > div.product-node > div.image:hover {
     border: 2px solid var(--highlight-color);
     padding: 2px;
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
@@ -423,12 +368,12 @@ div.panel > div.recipe-node > div.info-container > span.amount-not-1 {
     font-weight: bold;
     font-size: 14px;
 }
-div.panel > div.recipe-node > span.machine-count {
-    grid-area: 1/3/1/3;
-    font-size: 12px;
+div.panel > div.recipe-node > span.extra-input {
+    grid-area: 3/2/3/2;
+    font-size: 10px;
     font-family: sans-serif;
     margin-left: 4px;
-    margin-top: 10px;
+    text-align: center;
 }
 div.panel > div.recipe-node > div.connect-line {
     height: 0;
