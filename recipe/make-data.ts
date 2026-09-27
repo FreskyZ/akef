@@ -21,6 +21,7 @@ interface DataContext {
         inputs: { name: string, count: number }[],
         outputs: { name: string, count: number }[],
     }[],
+    additionalRecipes: DataContext['recipes'],
     // for validation
     // system inputs are input items for the overall production system,
     // include plants, minerals and other items only come from manual collection action
@@ -179,17 +180,34 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
         recipe.inputs.forEach(i => validateRecipeItemName(recipe.name, i.name));
         recipe.outputs.forEach(o => validateRecipeItemName(recipe.name, o.name));
 
-        if (recipe.inputs.length == 2 && (
+        if (recipe.inputs.length == 2 && recipe.inputs[0].count == 1 && recipe.inputs[1].count == 1 && (
             cx.bottles.includes(recipe.inputs[0].name) && cx.fluids.includes(recipe.inputs[1].name)
             || cx.fluids.includes(recipe.inputs[0].name) && cx.bottles.includes(recipe.inputs[1].name)
         )) {
-            console.log(`${filename}: recipe ${recipe.name}: don't add fill bottle recipes`);
+            console.log(`${filename}: recipe ${recipe.name}: don't add vanilla fill bottle recipes`);
         }
-        if (recipe.outputs.length == 2 && (
+        if (recipe.outputs.length == 2 && recipe.inputs[0].count == 1 && recipe.inputs[1].count == 1 && (
             cx.bottles.includes(recipe.outputs[0].name) && cx.fluids.includes(recipe.outputs[1].name)
             || cx.fluids.includes(recipe.outputs[0].name) && cx.bottles.includes(recipe.outputs[1].name)
         )) {
-            console.log(`${filename}: recipe ${recipe.name}: don't add pour bottle recipes`);
+            console.log(`${filename}: recipe ${recipe.name}: don't add vanilla pour bottle recipes`);
+        }
+
+        // after previous validation, add fill recipe for really used bottle+fluid items
+        for (const input of recipe.inputs) {
+            const newRecipeName = `${input.name}灌装`;
+            if (input.name.includes('-')
+                && !cx.recipes.some(r => r.name == newRecipeName) && !cx.additionalRecipes.some(r => r.name == newRecipeName)
+            ) {
+                const [bottleName, fluidName] = input.name.split('-');
+                cx.additionalRecipes.push({
+                    name: `${input.name}灌装`,
+                    machine: '灌装机',
+                    time: 2,
+                    inputs: [{ name: bottleName, count: 1 }, { name: fluidName, count: 1 }],
+                    outputs: [{ name: input.name, count: 1 }],
+                });
+            }
         }
 
         const serialized = [
@@ -209,6 +227,7 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
 const cx: DataContext = {
     items: [],
     recipes: [],
+    additionalRecipes: [],
     systemInputs: [],
     bottles: [],
     fluids: [],
@@ -220,7 +239,9 @@ for (const filename of (await fs.readdir('recipe/data')).sort((f1, f2) => f1.loc
         processDataFile(cx, filename, await fs.readFile(path.join('recipe', 'data', filename), 'utf-8'));
     }
 }
+cx.additionalRecipes.forEach(r => cx.recipes.push(r));
 
+// TODO add filled items and time limited items to result data
 const resultdata = {
     recipes: cx.recipes.sort((r1, r2) => Buffer.from(r1.name).compare(Buffer.from(r2.name))).map(r => ({
         name: r.name,

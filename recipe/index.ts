@@ -8,18 +8,19 @@ interface RecipeData {
     name: string,
     machine: string,
     time?: number,
+    vibe?: string,
     inputs: { name: string, count?: number }[],
     outputs: { name: string, count?: number }[],
 }
 
-const pagedata = (window as any)['thepagedata'] as {
-    items: ItemData[],
-    recipes: RecipeData[],
-};
+const pagedata = (window as any)['thepagedata'] as Readonly<{
+    items: ReadonlyArray<ItemData>,
+    recipes: ReadonlyArray<RecipeData>,
+}>;
 // spirit sheet size
 function calculateItemImageSize(count: number) {
     const gridWidth = Math.ceil(Math.sqrt(count));
-    const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth - 1 : gridWidth;
+    const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth : gridWidth - 1;
     return [gridWidth * 40, gridHeight * 40];
 }
 const itemImageSize = calculateItemImageSize(pagedata.items.length);
@@ -41,9 +42,9 @@ function setupNavigationBar() {
         imageElement.title = item.name;
         imageElement.style.backgroundImage = `url("./item.avif")`;
         imageElement.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-        // TODO why do this only work with right+bottom?
-        // TODO why does y need x36 not x40
-        imageElement.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
+        // background-position is very mysterious
+        // https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/background-position
+        imageElement.style.backgroundPosition = `${-item.icon[1] * 40}px ${-item.icon[0] * 40}px`;
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
@@ -57,11 +58,11 @@ function setupNavigationBar() {
     elements.searchInput.addEventListener('change', () => {
         for (const itemElement of Array.from<HTMLLIElement>(elements.itemList.children as any)) {
             if (!elements.searchInput.value) {
-                itemElement.style.display = 'grid';
+                itemElement.style.display = 'flex';
             } else {
                 const item = pagedata.items.find(i => i.name == itemElement.dataset['id']);
                 const found = item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
-                itemElement.style.display = found ? 'grid' : 'none';
+                itemElement.style.display = found ? 'flex' : 'none';
             }
         }
     });
@@ -76,14 +77,21 @@ interface NodeLike {
     threadOffset?: number,
 }
 interface ItemNode extends NodeLike {
-    // id, name, desc[0], desc[1], data.icons[id]
     data: ItemData,
+    // bottle item and fluid item, in that case, .data is fake object not from pagedata.items
+    filled?: [ItemData, ItemData],
     // depth is x coordinate
     depth: number,
-    // is duplicate node on the path, display an ellipsis for children
-    duplicate: boolean,
+    // display an ellipsis for
+    // - duplicate node on the path
+    // - fresh water is normally collected, should not use other recipe's side product as major recipe
+    // - sewage as input, this is side product, no need to display full
+    // - phase transitioner, don't regard phase transitioning as major recipe
+    ellipsisReason?: 'duplicate' | 'fresh-water' | 'sewage-reuse' | 'phase-transitioner',
     children: RecipeNode[],
     possibleProducts: ItemData[],
+    // recipes for sewage harmless treatment
+    vanishingRecipes: RecipeData[],
 }
 interface RecipeNode extends NodeLike {
     // id, name, machineId, time, ingredients, products
@@ -98,33 +106,74 @@ interface RecipeNode extends NodeLike {
 // for duplicate item in tree, allow same item appear in different line, disallow same item in same line
 // path: node id[] from root to current item, include root, not include current item, empty for the main item
 // return ItemNode
-function collectRecipeTree(item: ItemData, path: string[]) {
-    const itemNode: ItemNode = { data: item, depth: path.length, duplicate: false, children: [], possibleProducts: [] };
+function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: ItemNode['ellipsisReason']) {
+    const itemNode: ItemNode = {
+        data: item,
+        depth: path.length,
+        children: [],
+        possibleProducts: [],
+        vanishingRecipes: [],
+    };
+    if (item.name.includes('-')) {
+        const [bottleName, fluidName] = item.name.split('-');
+        const bottleData = pagedata.items.find(i => i.name == bottleName);
+        const fluidData = pagedata.items.find(i => i.name == fluidName);
+        itemNode.filled = [bottleData, fluidData];
+    }
+
     if (path.includes(item.name)) {
-        itemNode.duplicate = true;
+        itemNode.ellipsisReason = 'duplicate';
+        return itemNode;
+    } else if (item.name == '清水' && path.length != 0) {
+        itemNode.ellipsisReason = 'fresh-water';
+        return itemNode;
+    } else if (ellipsisReasonHint) {
+        itemNode.ellipsisReason = ellipsisReasonHint;
         return itemNode;
     }
     if (!path.length) {
-        const possibleProductIds = pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name)).flatMap(r => r.outputs.map(r => r.name));
-        itemNode.possibleProducts = Array.from(new Set(possibleProductIds)).map(name => pagedata.items.find(i => i.name == name));
+        const productItemNames = new Set<string>();
+        for (const recipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name))) {
+            // dont include fill bottle recipes in possible products...
+            if (recipe.outputs.length == 1 && recipe.outputs[0].name.includes('-')) {
+                // ...but you can include the result bottle+fluid item's possible products
+                for (const nextrecipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == recipe.outputs[0].name))) {
+                    // filled item don't have a filled item possible product
+                    nextrecipe.outputs.forEach(r => productItemNames.add(r.name));
+                }
+            } else {
+                recipe.outputs.forEach(r => productItemNames.add(r.name));
+            }
+        }
+        itemNode.possibleProducts = Array.from(productItemNames).map(n => pagedata.items.find(i => i.name == n));
+        itemNode.vanishingRecipes = pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0);
     }
-    // ATTENTION this really gets deep 10? but you still need to handle 清水污水 related issues
+    // this was 10, but new game content, namely 赫铜 technology, really push this pass 10
     if (path.length > 20) {
         throw new Error('unexpected too deep');
     }
-    // regard seed as leaf node, no recipe, except seed item itself
-    // ATTENTION HARDCODE regard 清水 as no recipe
-    if (item.name != '清水' || path.length == 0) {
-        // exclude pour in normal dependency tree (allow in possible products)
-        // ATTENTION HARDCODE ignore 反应池 recipes because 反应池 and 扩容反应池 is same
-        for (const recipe of pagedata.recipes.filter(r => r.machine != '反应池' && r.outputs.some(r => r.name == item.name))) {
-            itemNode.children.push({
-                data: recipe,
-                // feel free to duplicate depth, the layout algorithm completely don't use node.depth and even node name
-                depth: path.length,
-                children: recipe.inputs.map(ingredient => collectRecipeTree(pagedata.items.find(i => i.name == ingredient.name), [...path, item.name])),
-            });
+
+    for (const recipe of pagedata.recipes.filter(r => r.outputs.some(r => r.name == item.name))) {
+        // ATTENTION TODO for now 反应池 and 扩容反应池 is same, ignore 反应池 recipes
+        if (recipe.machine == '反应池') { continue; }
+
+        const children: ItemNode[] = [];
+        for (const input of recipe.inputs) {
+            if (input.name.includes('-')) {
+                // bottle+fluid don't have a entry in pagedata.items
+                children.push(collectRecipeTree({
+                    name: input.name,
+                    icon: null,
+                    pinyin: null,  
+                }, [...path, item.name]));
+            } else {
+                const ellipsisReason = pagedata.recipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0)
+                    ? 'sewage-reuse' : recipe.machine == '固气转化机' || recipe.machine == '液气转化机' ? 'phase-transitioner' : null;
+                const inputItemData = pagedata.items.find(i => i.name == input.name);
+                children.push(collectRecipeTree(inputItemData, [...path, item.name], ellipsisReason));
+            }
         }
+        itemNode.children.push({ data: recipe, depth: path.length, children });
     }
     return itemNode;
 }
@@ -336,12 +385,15 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
     parent.appendChild(svgElement);
     return svgElement;
 }
-function setupImageElement(element: HTMLDivElement, item: ItemData, size: number = 40) {
+function setupImageElement(element: HTMLDivElement, item: ItemData, filled?: [ItemData, ItemData]) {
     element.style.backgroundImage = `url("./item.avif")`;
     element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-    element.style.backgroundPosition = `right ${item.icon[1] * 40 + 40}px bottom ${item.icon[0] * 36 + 40}px`;
-    element.style.width = element.style.height = `${size}px`;
-    // element.alt = item.name;
+    element.style.backgroundPosition = `-${item.icon[1] * 40}px -${item.icon[0] * 40}px`;
+    // // this is not good, cannot control alpha of one of the images, and if you want to make overlay image smaller, the other items again appears into the border
+    // element.style.backgroundImage = `url("./item.avif"), url("./item.avif")`;
+    // element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px, ${itemImageSize[0]}px ${itemImageSize[1]}px`;
+    // // multiple background image z index is *defined* to be reversed, why?
+    // element.style.backgroundPosition = `-${filled[1].icon[1] * 40}px -${filled[1].icon[0] * 40}px, -${filled[0].icon[1] * 40}px -${filled[0].icon[0] * 40}px`;
 }
 
 function setupDragMove(element: HTMLDivElement) {
@@ -394,12 +446,7 @@ class EventEmitter<T> {
     }
 }
 
-// cleanup global variable reference
-// NOTE this is not event emitter, this is cleaned by caller
-const allCleanupHandlers: { [itemId: string]: (() => void)[] } = {};
-
 function drawRecipeTree(root: ItemNode) {
-    const cleanupHandlers = allCleanupHandlers[root.data.name] ??= [];
 
     // you can go down boundaries of the tree for this information,
     // but I'd like to avoid layout algorithm internals outside, so visit all nodes
@@ -444,9 +491,9 @@ function drawRecipeTree(root: ItemNode) {
         dataset: { 'id': root.data.name },
         left: 100,
         top: 100,
-        width: CellWidth * maxDepth + 112 + (root.possibleProducts.length ? 80 : 0), 
+        width: CellWidth * maxDepth + 112 + (root.possibleProducts.length + root.vanishingRecipes.length ? 80 : 0), 
         // calculate result require 72, but seems too much padding bottom, reduce some
-        height: CellHeight * (Math.max(maxPosition + 1, root.possibleProducts.length)) + 60,
+        height: CellHeight * (Math.max(maxPosition + 1, root.possibleProducts.length  + root.vanishingRecipes.length)) + 60,
     }, element => {
         setupDragMove(element);
         element.addEventListener('mousedown', e => {
@@ -456,6 +503,11 @@ function drawRecipeTree(root: ItemNode) {
     /* close */ j(panelElement, 'button', { className: 'close', innerText: 'X' },
         e => e.addEventListener('click', () => handleClosePanel(root.data.name)));
     /* title */ j(panelElement, 'span', { className: 'title', innerText: root.data.name });
+    /* config? */ j(panelElement, 'input', { className: 'config' }, e => {
+        e.addEventListener('change', () => {
+            console.log('input.config change, ', e.value);
+        });
+    });
 
     // try bfs to make element order in main element more clear
     let remainingItems: [ItemNode, string[]][] = [[root, []]]; // item and ancestor path
@@ -476,22 +528,36 @@ function drawRecipeTree(root: ItemNode) {
         const parentRecipe = path.length == 0 ? null : pagedata.recipes.find(r => r.name == path.at(-1));
 
         const itemElement = j(panelElement, 'div', {
-            className: 'item-node' + (item.data.name == root.data.name ? ' main-item-node' : ''),
+            className: 'item-node' + (item.data.name == root.data.name && path.length == 0 ? ' main-item-node' : ''),
             dataset: { 'id': item.data.name, 'parentrecipe': parentRecipe?.name },
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
-        // TODO item image's hover border is missing
-        /* image */ j(itemElement, 'div', { className: 'image' }, e => {
-            setupImageElement(e, item.data);
+        // TODO limited-time marker
+        // TODO allow item.icon with empty and display a text inside the div
+        // you can use background-origin: content-box to avoid background-position take padding into calculation,
+        // but this still cannot avoid other item's image appear in padding area, so have to use an image wrapper
+        const imageWrapperElement = j(itemElement, 'div', { className: 'image-wrapper' }, e => {
             if (item.data.name != root.data.name) {
                 e.addEventListener('click', () => handleOpenPanel(item.data));
             }
             e.addEventListener('mouseenter', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.add('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight')));
             e.addEventListener('mouseleave', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>img`)).forEach(e => e.classList.remove('highlight')));
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight')));
         });
+        if (item.filled) {
+            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => {
+                setupImageElement(e, item.filled[0]);
+            });
+            /* overlay image */ j(imageWrapperElement, 'div', { className: 'image overlay-image' }, e => {
+                setupImageElement(e, item.filled[1]);
+            });
+        } else {
+            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => {
+                setupImageElement(e, item.data);
+            });
+        }
         // item-node width 72 cannot fit in "bottle with liquid" names, add a container to allow more width
         /* name-container */ j(itemElement, 'div', { className: 'name' }, nameContainer => {
             /* name */ j(nameContainer, 'span', { innerText: item.data.name });
@@ -499,9 +565,14 @@ function drawRecipeTree(root: ItemNode) {
 
         if (item.children.length) {
             /* left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1' });
-        } else if (item.duplicate) {
-            /* virtual left connect line */ j(itemElement, 'div', { className:
-                'connect-line connect-line1 connect-line-virtual' }, e => e.title = '之前在链路上出现过了');
+        } else if (item.ellipsisReason) {
+            const tooltip = {
+                'duplicate': '之前在链路上出现过了',
+                'fresh-water': '虽然也有配方可以产生水，但是你应该用采集的水',
+                'sewage-reuse': '污水是这些配方的副产物，所以就不继续显示了，想看可以点进去',
+                'phase-transitioner': '相变机的配方就不继续显示了，想看可以点进去',
+            }[item.ellipsisReason];
+            /* virtual left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1 connect-line-virtual' }, e => e.title = tooltip);
         }
 
         if (parentRecipe) {
@@ -523,42 +594,50 @@ function drawRecipeTree(root: ItemNode) {
             });
         }
 
-        if (item.possibleProducts.length) {
+        if (item.possibleProducts.length + item.vanishingRecipes.length) {
             /* virtual right connect line */ j(itemElement, 'div', { className: 'connect-line connect-line2 connect-line-virtual' });
 
+            const entries = item.possibleProducts
+                .map<['product', ItemData] | ['recipe', RecipeData]>(p => ['product', p])
+                .concat(item.vanishingRecipes.map(r => ['recipe', r]))
+                .map((e, i) => [e, i] as const);
             // if products length < maxposition + 1, then products should be centered around root node's position
             //   if length == 1, baseposition should be same as root item position, if length == 2, baseposition should be root item position -0.5
             // else products should tightly fit in complete height of the panel
-            const basePosition = item.possibleProducts.length < maxPosition + 1 ? root.position - (item.possibleProducts.length - 1) / 2 : 0;
-            for (const [product, productIndex] of item.possibleProducts.map((p, i) => [p, i] as const)) {
-                const productPosition = basePosition + productIndex;
+            const basePosition = entries.length < maxPosition + 1 ? root.position - (entries.length - 1) / 2 : 0;
+            for (const [[kind, entryData], entryIndex] of entries) {
+                const entryPosition = basePosition + entryIndex;
                 const productElement = j(panelElement, 'div', {
                     className: 'product-node',
-                    dataset: { 'id': product.name },
+                    dataset: { 'id': kind == 'product' ? entryData.name : entryData.name },
                     // same gap between root item and possible product item,
                     // so this left is same as recipe position with depth = -1
                     left: CellWidth * maxDepth + 100,
-                    // same as item-node regarding productPosition as item.position
-                    top: CellHeight * productPosition + 40,
-                }, e => e.addEventListener('click', () => handleOpenPanel(product)));
+                    // same as item-node regarding entryPosition as item.position
+                    top: CellHeight * entryPosition + 40,
+                }, kind == 'product' ? e => e.addEventListener('click', () => handleOpenPanel(entryData)) : undefined);
 
-                /* image */ j(productElement, 'div', { className: 'image' }, e => setupImageElement(e, product));
+                const imageWrapperElement = j(productElement, 'div', { className: 'image-wrapper' });
+                /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e =>
+                    // possible products don't include filled item
+                    kind == 'product' ? setupImageElement(e, entryData) : e.innerText = entryData.name);
+
                 /* name container */ j(productElement, 'div', { className: 'name' }, nameContainer => {
-                    /* name */ j(nameContainer, 'span', { innerText: product.name })
+                    /* name */ j(nameContainer, 'span', { innerText: kind == 'product' ? entryData.name : entryData.machine })
                 });
                 /* connect line */ j(productElement, 'div', { className: 'connect-line' });
 
                 // spread line: opposite of collect line
                 // direction is source to target's direction, so direction is also kind of reversed compared to collect-line
-                const direction = item.position > productPosition ? 'up' : item.position == productPosition ? 'level' : 'down';
+                const direction = item.position > entryPosition ? 'up' : item.position == entryPosition ? 'level' : 'down';
                 /* spread line */ j(panelElement, 'div', {
                     className: `spread-line spread-line-${direction}`,
-                    dataset: { 'id': product.name },
+                    dataset: { 'id': kind == 'product' ? entryData.name : entryData.name },
                     // product-node.left - spread line width 8
                     left: CellWidth * maxDepth + 92,
                     // same as item collect line, item-node.top + 24
-                    top: CellHeight * (direction == 'up' ? productPosition : item.position) + 64,
-                    height: CellHeight * Math.abs(productPosition - item.position),
+                    top: CellHeight * (direction == 'up' ? entryPosition : item.position) + 64,
+                    height: CellHeight * Math.abs(entryPosition - item.position),
                 });
             }
         }
@@ -566,15 +645,20 @@ function drawRecipeTree(root: ItemNode) {
         // find by begin with parameter path, and -2 is parameter item
         for (const recipe of item.children) {
             const recipeElement = j(panelElement, 'div', {
-                className: 'recipe-node active',
+                className: 'recipe-node',
                 dataset: { 'id': recipe.data.name },
                 left: CellWidth * (maxDepth - recipe.depth - 1) + 100,
                 top: CellHeight * recipe.position + 40,
+            }, e => {
+                e.addEventListener('mouseenter', () =>
+                    Array.from(panelElement.querySelectorAll(`div.recipe-node[data-id="${recipe.data.name}"]`)).forEach(e => e.classList.add('highlight')));
+                e.addEventListener('mouseleave', () =>
+                    Array.from(panelElement.querySelectorAll(`div.recipe-node[data-id="${recipe.data.name}"]`)).forEach(e => e.classList.remove('highlight')));
             });
 
             // time and amount
             const amount = recipe.data.outputs.find(p => p.name == item.data.name).count ?? 1;
-            const infoElement1 = j(recipeElement, 'div', { className: 'info-container info-container1' });
+            const infoElement1 = j(recipeElement, 'div', { className: 'info-container' });
             /* time icon */ createSVGElement(infoElement1, ClockIcon, 'time-icon');
             /* time */ j(infoElement1, 'span', { className: 'time', innerText: `${recipe.data.time ?? 2}s` });
             /* amount icon */ createSVGElement(infoElement1, ProductIcon, 'amount-icon');
@@ -587,7 +671,24 @@ function drawRecipeTree(root: ItemNode) {
                 createSVGElement(sideProductIconContainer, LinkIcon, 'side-product-icon');
             }
     
-            /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine });
+            if (recipe.data.vibe) {
+                // the vibe style is already clear, no need to add item icon to vibe text
+                const stylename = recipe.data.vibe == '息壤' ? 'xiran'
+                    : recipe.data.vibe == '惰气' ? 'lazy' : recipe.data.vibe == '酸气' ? 'sour' : '';
+                /* machine name */ j(recipeElement, 'div', {
+                    className: `machine-name vibe-${stylename}`,
+                    innerText: recipe.data.machine,
+                }, e => e.title = `需要${recipe.data.vibe}环境`);
+                /* vibe text */ j(recipeElement, 'span', { className: 'machine-extra', innerText: `${recipe.data.vibe}环境 6/min` });
+            } else if (recipe.data.machine == '固气转化机' || recipe.data.machine == '液气转化机') {
+                /* machine name */ j(recipeElement, 'div', {
+                    className: 'machine-name vibe-xiran',
+                    innerText: recipe.data.machine,
+                }, e => e.title = `别忘了额外的息壤气输入`);
+                /* extra input text */ j(recipeElement, 'span', { className: 'machine-extra', innerText: `+息壤气 6/min` });
+            } else {
+                /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine });
+            }
 
             /* left connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line1' });
             /* right connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line2' });
@@ -608,10 +709,9 @@ function drawRecipeTree(root: ItemNode) {
     }
 }
 
-// TODO this list unexpected reordered after first click
 let sortMethod: 'normal' | 'active' = 'normal';
 const sortMethodDescription = {
-    'normal': '现在是正常排序，点一下换成打开的窗口排在前面',
+    'normal': '现在是默认排序，点一下换成打开的窗口排在前面',
     'active': '现在是打开的窗口排在前面，点一下换成默认排序',
 };
 elements.sortButton.title = sortMethodDescription[sortMethod];
@@ -636,13 +736,15 @@ function updateItemList() {
     elements.sortButton.title = sortMethodDescription[sortMethod];
     elements.sortButton.style.background = sortMethod == 'active' ? 'lightgray' : '';
     if (sortMethod == 'normal') {
-        // TODO localecompare compatibility issue again, fix by remember original order
-        items.sort((i1, i2) => i1.dataset['id'].localeCompare(i2.dataset['id']));
+        // NOTE don't localecompare here, it is not compatible with make- scripts that use utf8 byte sequence
+        items.sort((i1, i2) => pagedata.items.findIndex(i => i.name == i1.dataset['id']) - pagedata.items.findIndex(i => i.name == i2.dataset['id']));
     } else {
         items.sort((i1, i2) => {
             const i1InPanel = panelIds.has(i1.dataset['id']) ? 0 : 1;
             const i2InPanel = panelIds.has(i2.dataset['id']) ? 0 : 1;
-            return i1InPanel != i2InPanel ? i1InPanel - i2InPanel : i1.dataset['id'].localeCompare(i2.dataset['id']);
+            return i1InPanel != i2InPanel ? i1InPanel - i2InPanel
+                // NOTE don't localecompare here, it is not compatible with make- scripts that use utf8 byte sequence
+                : pagedata.items.findIndex(i => i.name == i1.dataset['id']) - pagedata.items.findIndex(i => i.name == i2.dataset['id']);
         });
     }
     items.forEach(i => elements.itemList.appendChild(i));
@@ -675,8 +777,8 @@ function handleClosePanel(itemId: string) {
     const panels: HTMLDivElement[] = Array.from(elements.main.querySelectorAll('div.panel'));
     const panel = panels.find(p => p.dataset['id'] == itemId);
     if (panel) {
-        allCleanupHandlers[itemId].forEach(f => f());
-        delete allCleanupHandlers[itemId];
+        // allCleanupHandlers[itemId].forEach(f => f());
+        // delete allCleanupHandlers[itemId];
         panel.remove();
         updateItemList();
     } else {
