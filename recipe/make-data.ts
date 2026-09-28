@@ -18,10 +18,11 @@ interface DataContext {
         machine: string,
         time: number,
         vibe?: string,
+        event: boolean,
         inputs: { name: string, count: number }[],
         outputs: { name: string, count: number }[],
     }[],
-    additionalRecipes: DataContext['recipes'],
+    realFillRecipes: { bottle: string, fluid: string }[],
     // for validation
     // system inputs are input items for the overall production system,
     // include plants, minerals and other items only come from manual collection action
@@ -89,7 +90,10 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
             console.log(`${filename}: recipe ${recipeName} includes invalid character`);
         }
 
-        const splitted1 = raw.split('=>[').map(x => x.trim());
+        const limitedTime = raw.startsWith('活动：');
+        const excludeFlag = limitedTime ? raw.substring(3) : raw;
+
+        const splitted1 = excludeFlag.split('=>[').map(x => x.trim());
         if (splitted1.length != 2) {
             console.log(`${filename}: recipe ${recipeName}: invalid format, expect one =>[`);
             continue;
@@ -148,7 +152,7 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
                 console.log(`${filename}: recipe ${recipeName}: unknown condition ${condition}`);
             }
         }
-        cx.recipes.push({ name: recipeName, time, machine, vibe, inputs, outputs });
+        cx.recipes.push({ name: recipeName, time, machine, vibe, event: limitedTime, inputs, outputs });
     }
 
     const validateRecipeItemName = (recipeName: string, itemName: string) => {
@@ -156,6 +160,9 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
             const splitted = itemName.split('-');
             if (splitted.length == 2) {
                 if (cx.bottles.includes(splitted[0]) && cx.fluids.includes(splitted[1])) {
+                    if (!cx.realFillRecipes.some(r => r.bottle == splitted[0] && r.fluid == splitted[1])) {
+                        cx.realFillRecipes.push({ bottle: splitted[0], fluid: splitted[1] });
+                    }
                     return; // ok
                 }
             }
@@ -193,23 +200,6 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
             console.log(`${filename}: recipe ${recipe.name}: don't add vanilla pour bottle recipes`);
         }
 
-        // after previous validation, add fill recipe for really used bottle+fluid items
-        for (const input of recipe.inputs) {
-            const newRecipeName = `${input.name}灌装`;
-            if (input.name.includes('-')
-                && !cx.recipes.some(r => r.name == newRecipeName) && !cx.additionalRecipes.some(r => r.name == newRecipeName)
-            ) {
-                const [bottleName, fluidName] = input.name.split('-');
-                cx.additionalRecipes.push({
-                    name: `${input.name}灌装`,
-                    machine: '灌装机',
-                    time: 2,
-                    inputs: [{ name: bottleName, count: 1 }, { name: fluidName, count: 1 }],
-                    outputs: [{ name: input.name, count: 1 }],
-                });
-            }
-        }
-
         const serialized = [
             recipe.inputs.map(i => `${i.name},${i.count}`).join(','),
             recipe.outputs.map(i => `${i.name},${i.count}`).join(','),
@@ -227,7 +217,7 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
 const cx: DataContext = {
     items: [],
     recipes: [],
-    additionalRecipes: [],
+    realFillRecipes: [],
     systemInputs: [],
     bottles: [],
     fluids: [],
@@ -239,15 +229,26 @@ for (const filename of (await fs.readdir('recipe/data')).sort((f1, f2) => f1.loc
         processDataFile(cx, filename, await fs.readFile(path.join('recipe', 'data', filename), 'utf-8'));
     }
 }
-cx.additionalRecipes.forEach(r => cx.recipes.push(r));
+for (const { bottle, fluid } of cx.realFillRecipes) {
+    cx.recipes.push({
+        name: `${bottle}-${fluid}灌装`,
+        machine: '灌装机',
+        time: 2,
+        event: false,
+        inputs: [{ name: bottle, count: 1 }, { name: fluid, count: 1 }],
+        outputs: [{ name: `${bottle}-${fluid}`, count: 1 }],
+    });
+}
 
 // TODO add filled items and time limited items to result data
 const resultdata = {
+    'filled-items': cx.realFillRecipes.map(r => `${r.bottle}-${r.fluid}`),
     recipes: cx.recipes.sort((r1, r2) => Buffer.from(r1.name).compare(Buffer.from(r2.name))).map(r => ({
         name: r.name,
         machine: r.machine,
         time: r.time == 2 ? undefined : r.time,
         vibe: r.vibe,
+        event: r.event ? r.event : undefined,
         inputs: r.inputs.map(i => ({
             name: i.name,
             count: i.count == 1 ? undefined : i.count,
@@ -258,8 +259,14 @@ const resultdata = {
         })),
     })),
 };
+let sb = '{"filled-items":[\n  ';
+sb += resultdata['filled-items'].map(n => `"${n}"`).join(',');
+sb += '\n], "recipes":[\n  ';
+sb += resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ');
+sb +='\n]}';
+
 console.log(`make-data.ts: write build/recipe.json`);
-await fs.writeFile('build/recipe.json', '[\n  ' + resultdata.recipes.map(r => JSON.stringify(r)).join(',\n  ') + '\n]');
+await fs.writeFile('build/recipe.json', sb);
 
 // this is used when migrating from 64px grid size to 40px grid size,
 // you cannot convert 64px image to 40px image because that will be too much loss,

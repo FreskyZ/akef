@@ -9,12 +9,14 @@ interface RecipeData {
     machine: string,
     time?: number,
     vibe?: string,
+    event?: true,
     inputs: { name: string, count?: number }[],
     outputs: { name: string, count?: number }[],
 }
 
 const pagedata = (window as any)['thepagedata'] as Readonly<{
     items: ReadonlyArray<ItemData>,
+    'filled-items': ReadonlyArray<string>,
     recipes: ReadonlyArray<RecipeData>,
 }>;
 // spirit sheet size
@@ -101,6 +103,11 @@ interface RecipeNode extends NodeLike {
     // use node[] here should make tree operations easier
     // when need to display count, find them in node.data.ingredients
     children: ItemNode[],
+    // a placeholder node don't render itself, for now placeholder node is for
+    // - a node place after ellipsis node so that the ellipsis does not collide with other connect lines
+    // - a node to allocate space for multiple product recipes to display side products, allocate space
+    //   mean it self is not a node to be rendered but leave space for the recipe node to display more information
+    kind?: 'placeholder',
 }
 
 // for duplicate item in tree, allow same item appear in different line, disallow same item in same line
@@ -114,7 +121,7 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
         possibleProducts: [],
         vanishingRecipes: [],
     };
-    if (item.name.includes('-')) {
+    if (pagedata["filled-items"].includes(item.name)) {
         const [bottleName, fluidName] = item.name.split('-');
         const bottleData = pagedata.items.find(i => i.name == bottleName);
         const fluidData = pagedata.items.find(i => i.name == fluidName);
@@ -123,19 +130,22 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
 
     if (path.includes(item.name)) {
         itemNode.ellipsisReason = 'duplicate';
+        itemNode.children.push({ data: null, depth: path.length, children: [], kind: 'placeholder' });
         return itemNode;
     } else if (item.name == '清水' && path.length != 0) {
         itemNode.ellipsisReason = 'fresh-water';
+        itemNode.children.push({ data: null, depth: path.length, children: [], kind: 'placeholder' });
         return itemNode;
     } else if (ellipsisReasonHint) {
         itemNode.ellipsisReason = ellipsisReasonHint;
+        itemNode.children.push({ data: null, depth: path.length, children: [], kind: 'placeholder' });
         return itemNode;
     }
     if (!path.length) {
         const productItemNames = new Set<string>();
         for (const recipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name))) {
             // dont include fill bottle recipes in possible products...
-            if (recipe.outputs.length == 1 && recipe.outputs[0].name.includes('-')) {
+            if (recipe.outputs.length == 1 && pagedata["filled-items"].includes(recipe.outputs[0].name)) {
                 // ...but you can include the result bottle+fluid item's possible products
                 for (const nextrecipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == recipe.outputs[0].name))) {
                     // filled item don't have a filled item possible product
@@ -153,18 +163,34 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
         throw new Error('unexpected too deep');
     }
 
+    let lastRecipeTrailingElementsSpace = 0;
     for (const recipe of pagedata.recipes.filter(r => r.outputs.some(r => r.name == item.name))) {
         // ATTENTION TODO for now 反应池 and 扩容反应池 is same, ignore 反应池 recipes
         if (recipe.machine == '反应池') { continue; }
 
+        // see recipe node layout, if recipe's element require more space than available, namely 72px
+        // allocate a dummy node that regard as a full node in layout process to leave space in real render process
+        // NOTE this is effectively another push away logic that only happens between a subtree root node's direct child nodes,
+        // while does not account for insufficient space between different subtrees e.g. between the rightmost direct child node
+        // and one of the right subtrees' specific node, but the layout agorithm is already very complex and I don't want to add
+        // a brand new layer of complexity so ignore this scenario for now
+        const thisRecipeLeadingElementsSpace = (recipe.vibe ? 16 : 0) + (recipe.machine == '固气转化机' || recipe.machine == '液气转化机' ? 16 : 0);
+        // UPDATE this is more error when you find the subtrees are already pushing away because of subtree themselves' descendent node
+        // because current data don't have >16 leading space and > 24 trailing space, disable this logic for now, old value is 36 if you forget
+        if (lastRecipeTrailingElementsSpace + thisRecipeLeadingElementsSpace > 360) {
+            console.log(`placeholder node before recipe ${recipe.name}`);
+            itemNode.children.push({ data: recipe, depth: path.length, children: [], kind: 'placeholder' });
+        }
+        lastRecipeTrailingElementsSpace = (recipe.outputs.length - 1) * 24 + (recipe.event ? 12 : 0);
+
         const children: ItemNode[] = [];
         for (const input of recipe.inputs) {
-            if (input.name.includes('-')) {
+            if (pagedata["filled-items"].includes(input.name)) {
                 // bottle+fluid don't have a entry in pagedata.items
                 children.push(collectRecipeTree({
                     name: input.name,
                     icon: null,
-                    pinyin: null,  
+                    pinyin: null,
                 }, [...path, item.name]));
             } else {
                 const ellipsisReason = pagedata.recipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0)
@@ -364,12 +390,6 @@ const ProductIcon = [
     "16 0 010-22.62l181.02-181.02a16 16 0 0122.62 0zm-84.85 11.3L713 203.53 605.52 311 713 418.48zM464 544a16 16 0 0116 16v304a16 16 0 01-16 16H160a16 16 0 01-16-16V560a16 16 0 0116-16zm-52 " +
     "68H212v200h200zm452-68a16 16 0 0116 16v304a16 16 0 01-16 16H560a16 16 0 01-16-16V560a16 16 0 0116-16zm-52 68H612v200h200z",
 ];
-const LinkIcon = [
-    "M574 665.4a8.03 8.03 0 00-11.3 0L446.5 781.6c-53.8 53.8-144.6 59.5-204 0-59.5-59.5-53.8-150.2 0-204l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3l-39.8-39.8a8.03 8.03 0 00-11.3 0L191.4 526.5c-84.6 " +
-    "84.6-84.6 221.5 0 306s221.5 84.6 306 0l116.2-116.2c3.1-3.1 3.1-8.2 0-11.3L574 665.4zm258.6-474c-84.6-84.6-221.5-84.6-306 0L410.3 307.6a8.03 8.03 0 000 11.3l39.7 39.7c3.1 3.1 8.2 3.1 11.3 " +
-    "0l116.2-116.2c53.8-53.8 144.6-59.5 204 0 59.5 59.5 53.8 150.2 0 204L665.3 562.6a8.03 8.03 0 000 11.3l39.8 39.8c3.1 3.1 8.2 3.1 11.3 0l116.2-116.2c84.5-84.6 84.5-221.5 0-306.1zM610.1 372.3a8.03 " +
-    "8.03 0 00-11.3 0L372.3 598.7a8.03 8.03 0 000 11.3l39.6 39.6c3.1 3.1 8.2 3.1 11.3 0l226.4-226.4c3.1-3.1 3.1-8.2 0-11.3l-39.5-39.6z",
-];
 
 function createSVGElement(parent: Element, pathdata: string[], className?: string) {
     const svgns = 'http://www.w3.org/2000/svg';
@@ -385,7 +405,7 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
     parent.appendChild(svgElement);
     return svgElement;
 }
-function setupImageElement(element: HTMLDivElement, item: ItemData, filled?: [ItemData, ItemData]) {
+function setupImageElement(element: HTMLDivElement, item: ItemData) {
     element.style.backgroundImage = `url("./item.avif")`;
     element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
     element.style.backgroundPosition = `-${item.icon[1] * 40}px -${item.icon[0] * 40}px`;
@@ -394,6 +414,11 @@ function setupImageElement(element: HTMLDivElement, item: ItemData, filled?: [It
     // element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px, ${itemImageSize[0]}px ${itemImageSize[1]}px`;
     // // multiple background image z index is *defined* to be reversed, why?
     // element.style.backgroundPosition = `-${filled[1].icon[1] * 40}px -${filled[1].icon[0] * 40}px, -${filled[0].icon[1] * 40}px -${filled[0].icon[0] * 40}px`;
+}
+function setupSmallImageElement(element: HTMLDivElement, item: ItemData, size: number) {
+    element.style.backgroundImage = `url("./item.avif")`;
+    element.style.backgroundSize = `${itemImageSize[0]  * size / 40}px ${itemImageSize[1] * size / 40}px`;
+    element.style.backgroundPosition = `-${item.icon[1] * size}px -${item.icon[0] * size}px`;
 }
 
 function setupDragMove(element: HTMLDivElement) {
@@ -424,28 +449,6 @@ function setupDragMove(element: HTMLDivElement) {
     });
 }
 
-function round2(value: number): number {
-    return Math.round(value * 100) / 100;
-}
-
-class EventEmitter<T> {
-    private handlers: ((data: T) => void)[];
-    public constructor() {
-        this.handlers = [];
-    }
-    // return cleanup
-    public addEventListener(f: (data: T) => void): () => void {
-        this.handlers.push(f);
-        return () => {
-            const index = this.handlers.indexOf(f);
-            if (index >= 0) { this.handlers.splice(index, 1); }
-        };
-    }
-    public send(data: T) {
-        this.handlers.forEach(h => h(data));
-    }
-}
-
 function drawRecipeTree(root: ItemNode) {
 
     // you can go down boundaries of the tree for this information,
@@ -453,6 +456,8 @@ function drawRecipeTree(root: ItemNode) {
     let maxDepth = 0;
     let maxPosition = -100;
     function collectCoordinates(node: ItemNode | RecipeNode) {
+        // don't count placeholder node
+        if ((node as RecipeNode).kind == 'placeholder') { return; }
         maxDepth = Math.max(maxDepth, node.depth);
         maxPosition = Math.max(maxPosition, node.position);
         for (const child of node.children) {
@@ -533,7 +538,6 @@ function drawRecipeTree(root: ItemNode) {
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
-        // TODO limited-time marker
         // TODO allow item.icon with empty and display a text inside the div
         // you can use background-origin: content-box to avoid background-position take padding into calculation,
         // but this still cannot avoid other item's image appear in padding area, so have to use an image wrapper
@@ -541,31 +545,32 @@ function drawRecipeTree(root: ItemNode) {
             if (item.data.name != root.data.name) {
                 e.addEventListener('click', () => handleOpenPanel(item.data));
             }
-            e.addEventListener('mouseenter', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight')));
-            e.addEventListener('mouseleave', () =>
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight')));
+            // e.addEventListener('mouseenter', () =>
+            //     Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight')));
+            // e.addEventListener('mouseleave', () =>
+            //     Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight')));
+            e.addEventListener('mouseenter', () => {
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight'));
+                // TODO don't forget this
+                Array.from(panelElement.querySelectorAll(`div.side-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight'));
+            });
+            e.addEventListener('mouseleave', () => {
+                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight'));
+                Array.from(panelElement.querySelectorAll(`div.side-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight'));
+            });
         });
         if (item.filled) {
-            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => {
-                setupImageElement(e, item.filled[0]);
-            });
-            /* overlay image */ j(imageWrapperElement, 'div', { className: 'image overlay-image' }, e => {
-                setupImageElement(e, item.filled[1]);
-            });
+            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => setupImageElement(e, item.filled[0]));
+            /* overlay image */ j(imageWrapperElement, 'div', { className: 'image overlay-image' }, e => setupImageElement(e, item.filled[1]));
         } else {
-            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => {
-                setupImageElement(e, item.data);
-            });
+            /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => setupImageElement(e, item.data));
         }
         // item-node width 72 cannot fit in "bottle with liquid" names, add a container to allow more width
         /* name-container */ j(itemElement, 'div', { className: 'name' }, nameContainer => {
             /* name */ j(nameContainer, 'span', { innerText: item.data.name });
         });
 
-        if (item.children.length) {
-            /* left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1' });
-        } else if (item.ellipsisReason) {
+        if (item.ellipsisReason) {
             const tooltip = {
                 'duplicate': '之前在链路上出现过了',
                 'fresh-water': '虽然也有配方可以产生水，但是你应该用采集的水',
@@ -573,6 +578,8 @@ function drawRecipeTree(root: ItemNode) {
                 'phase-transitioner': '相变机的配方就不继续显示了，想看可以点进去',
             }[item.ellipsisReason];
             /* virtual left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1 connect-line-virtual' }, e => e.title = tooltip);
+        } else if (item.children.length) {
+            /* left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1' });
         }
 
         if (parentRecipe) {
@@ -581,6 +588,8 @@ function drawRecipeTree(root: ItemNode) {
             /* right connect line */ j(itemElement, 'div', { className: 'connect-line connect-line2', dataset: { 'recipe': parentRecipe.name } });
         }
         for (const recipe of item.children) {
+            if (recipe.kind == 'placeholder') { continue; } // don't connect with placeholder nodes
+
             const direction = item.position > recipe.position ? 'down' : item.position == recipe.position ? 'level' : 'up';
             // collect line belong to panel element, not item element
             /* collect line */ j(panelElement, 'div', {
@@ -642,56 +651,67 @@ function drawRecipeTree(root: ItemNode) {
             }
         }
 
-        // find by begin with parameter path, and -2 is parameter item
-        for (const recipe of item.children) {
+        for (const recipe of item.children.filter(r => r.kind != 'placeholder')) {
+            
+            // these properties need to be placed in extra lines
+            const vibeItem = recipe.data.vibe ? pagedata.items.find(i =>
+                i.name == { '息壤': '息壤气', '惰气': '惰气', '酸气': '酸气' }[recipe.data.vibe]) : null;
+            const isPhaseTransitioner = recipe.data.machine == '固气转化机' || recipe.data.machine == '液气转化机';
+
+            const leadingElementsSpace = (vibeItem ? 16 : 0) + (isPhaseTransitioner ? 16 : 0);
             const recipeElement = j(panelElement, 'div', {
-                className: 'recipe-node',
+                className: `recipe-node`,
                 dataset: { 'id': recipe.data.name },
                 left: CellWidth * (maxDepth - recipe.depth - 1) + 100,
-                top: CellHeight * recipe.position + 40,
-            }, e => {
-                e.addEventListener('mouseenter', () =>
-                    Array.from(panelElement.querySelectorAll(`div.recipe-node[data-id="${recipe.data.name}"]`)).forEach(e => e.classList.add('highlight')));
-                e.addEventListener('mouseleave', () =>
-                    Array.from(panelElement.querySelectorAll(`div.recipe-node[data-id="${recipe.data.name}"]`)).forEach(e => e.classList.remove('highlight')));
+                top: CellHeight * recipe.position + 40 - leadingElementsSpace,
             });
+
+            // vibe
+            if (vibeItem) {
+                const vibeLineElement = j(recipeElement, 'div', {
+                    className: 'recipe-line vibe-line',
+                    dataset: { 'id': vibeItem.name }, // TODO highlight this
+                });
+                /* image */ j(vibeLineElement, 'div', { className: 'image' }, e => {
+                    setupSmallImageElement(e, vibeItem, 16);
+                    e.addEventListener('click', () => { if (item.data.name != vibeItem.name) { handleOpenPanel(vibeItem); } });
+                });
+                /* description */ j(vibeLineElement, 'span', {}, e => e.innerText = `${recipe.data.vibe}环境`);
+            }
+            // extra input
+            if (isPhaseTransitioner) {
+                const xiranGasItem = pagedata.items.find(i => i.name == '息壤气');
+                const extraInputLineElement = j(recipeElement, 'div', {
+                    className: 'recipe-line extra-input-line',
+                    dataset: { 'id': xiranGasItem.name }, // TODO highlight this
+                }, e => e.title = '意思是机器不在工作的时候也要息壤气6/min');
+                /* image */ j(extraInputLineElement, 'div', { className: 'image' }, e => {
+                    setupSmallImageElement(e, xiranGasItem, 16);
+                    e.addEventListener('click', () => { if (item.data.name != xiranGasItem.name) { handleOpenPanel(xiranGasItem); } });
+                });
+                /* description */ j(extraInputLineElement, 'span', {}, e => e.innerText = `息壤气 6/min`);
+            }
 
             // time and amount
             const amount = recipe.data.outputs.find(p => p.name == item.data.name).count ?? 1;
-            const infoElement1 = j(recipeElement, 'div', { className: 'info-container' });
-            /* time icon */ createSVGElement(infoElement1, ClockIcon, 'time-icon');
-            /* time */ j(infoElement1, 'span', { className: 'time', innerText: `${recipe.data.time ?? 2}s` });
-            /* amount icon */ createSVGElement(infoElement1, ProductIcon, 'amount-icon');
-            /* amount */ j(infoElement1, 'span', { className: 'amount' +
+            const basicInfoElement = j(recipeElement, 'div', { className: 'recipe-line basic-info-line' });
+            /* time icon */ createSVGElement(basicInfoElement, ClockIcon, 'time-icon');
+            /* time */ j(basicInfoElement, 'span', { className: 'time', innerText: `${recipe.data.time ?? 2}s` });
+            /* amount icon */ createSVGElement(basicInfoElement, ProductIcon, 'amount-icon');
+            /* amount */ j(basicInfoElement, 'span', { className: 'amount' +
                 (amount != 1 ? ` amount-not-1` : ''), innerText: `×${amount}` }, e => e.title = '产物数量' + (amount != 1 ? '大于1！' : ''));
-            if (recipe.data.outputs.length > 1) {
-                const sideProducts = recipe.data.outputs.filter(p => p.name != item.data.name)
-                    .map(p => `${pagedata.items.find(i => i.name == p.name).name}×${p.count ?? 1}`).join('，');
-                const sideProductIconContainer = j(infoElement1, 'span', { className: 'side-product-icon-container' }, e => e.title = `副产物：${sideProducts}`);
-                createSVGElement(sideProductIconContainer, LinkIcon, 'side-product-icon');
-            }
     
-            if (recipe.data.vibe) {
-                // the vibe style is already clear, no need to add item icon to vibe text
-                const stylename = recipe.data.vibe == '息壤' ? 'xiran'
-                    : recipe.data.vibe == '惰气' ? 'lazy' : recipe.data.vibe == '酸气' ? 'sour' : '';
-                /* machine name */ j(recipeElement, 'div', {
-                    className: `machine-name vibe-${stylename}`,
-                    innerText: recipe.data.machine,
-                }, e => e.title = `需要${recipe.data.vibe}环境`);
-                /* vibe text */ j(recipeElement, 'span', { className: 'machine-extra', innerText: `${recipe.data.vibe}环境 6/min` });
-            } else if (recipe.data.machine == '固气转化机' || recipe.data.machine == '液气转化机') {
-                /* machine name */ j(recipeElement, 'div', {
-                    className: 'machine-name vibe-xiran',
-                    innerText: recipe.data.machine,
-                }, e => e.title = `别忘了额外的息壤气输入`);
-                /* extra input text */ j(recipeElement, 'span', { className: 'machine-extra', innerText: `+息壤气 6/min` });
-            } else {
-                /* machine name */ j(recipeElement, 'div', { className: 'machine-name', innerText: recipe.data.machine });
-            }
-
-            /* left connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line1' });
-            /* right connect line */ j(recipeElement, 'div', { className: 'connect-line connect-line2' });
+            // machine name and connect lines
+            const mainLineElement = j(recipeElement, 'div', { className: 'recipe-line main-line' });
+            /* left connect line */ j(mainLineElement, 'div', { className: 'connect-line connect-line1' });
+            /* machine name */ j(mainLineElement, 'div', { className: `machine-name`, innerText: recipe.data.machine }, e => {
+                const selector = `div.recipe-node[data-id="${recipe.data.name}"]>div.main-line>div.machine-name`;
+                e.addEventListener('mouseenter', () =>
+                    Array.from(panelElement.querySelectorAll(selector)).forEach(e => e.classList.add('highlight')));
+                e.addEventListener('mouseleave', () =>
+                    Array.from(panelElement.querySelectorAll(selector)).forEach(e => e.classList.remove('highlight')));
+            });
+            /* right connect line */ j(mainLineElement, 'div', { className: 'connect-line connect-line2' });
             for (const item of recipe.children) {
                 const direction = recipe.position > item.position ? 'down' : recipe.position == item.position ? 'level' : 'up';
                 // collect line belong to panel element, not recipe element
@@ -705,6 +725,29 @@ function drawRecipeTree(root: ItemNode) {
                     height: CellHeight * Math.abs(item.position - recipe.position),
                 });
             }
+
+            // side products
+            for (const output of recipe.data.outputs.filter(o => o.name != item.data.name)) {
+                // for now side product will not be filled item
+                const sideProductItem = pagedata.items.find(i => i.name == output.name);
+                // TODO hover effect has minor issues
+                const sideProductElement = j(recipeElement, 'div', {
+                    className: 'recipe-line side-product-line',
+                    dataset: { 'item': sideProductItem.name }, // TODO highlight this
+                }, e => {
+                    e.addEventListener('click', () => { if (sideProductItem.name != root.data.name) { handleOpenPanel(sideProductItem); } });
+                });
+                /* image */ j(sideProductElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, sideProductItem, 24));
+                const amount = `x${output.count ?? 1}`;
+                /* title */ j(sideProductElement, 'span', { className: 'title' }, e => e.innerText = `其它产物${sideProductItem.name.length > 4 ? amount : ''}`);
+                /* name */ j(sideProductElement, 'span', { className: 'name' }, e => e.innerText = `${sideProductItem.name}${sideProductItem.name.length <= 4 ? amount : ''}`);
+            }
+            // limited time
+            if (recipe.data.event) {
+                const limitedTimeLineElement = j(recipeElement, 'div', { className: 'recipe-line limited-time-line' });
+                /* text */ j(limitedTimeLineElement, 'span', {}, e => e.innerText = '活动限时配方');
+            }
+
         }
     }
 }

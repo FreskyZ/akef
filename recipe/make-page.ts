@@ -146,7 +146,7 @@ const inputFiles = await Promise.all([
 ].map(n => fs.readFile(n, 'utf-8')));
 
 console.log(`make-page.ts: make data.json`);
-const pagedata = `{"items":${inputFiles[0]},"recipes":${inputFiles[1]}}`; // ?
+const pagedata = `{"items":${inputFiles[0]},${inputFiles[1].substring(1, inputFiles[1].length - 1)}}`; // ?
 console.log(`make-page.ts: minify source code`);
 const stylesheet = minifycss(inputFiles[2]);
 const script = await transpileScript();

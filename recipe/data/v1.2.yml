@@ -26,15 +26,15 @@
   芽针溶液生产-扩容: 清水 + 芽针粉末 =>[扩容反应池]=> 芽针溶液
   锦草溶液生产-扩容: 清水 + 锦草粉末 =>[扩容反应池]=> 锦草溶液
   # 活动
-  实验息壤瓶生产: 2息壤 =>[塑形机]=> 实验息壤瓶
-  实验息壤零件生产: 息壤 =>[配件机]=> 实验息壤零件
-  息壤葫芦生产: 5实验息壤瓶 + 5实验息壤零件 =>[封装机+10s]=> 息壤葫芦
+  实验息壤瓶生产: 活动：2息壤 =>[塑形机]=> 实验息壤瓶
+  实验息壤零件生产: 活动：息壤 =>[配件机]=> 实验息壤零件
+  息壤葫芦生产: 活动：5实验息壤瓶 + 5实验息壤零件 =>[封装机+10s]=> 息壤葫芦
   # 这个是1+5
-  实验重息壤瓶-芽针溶液灌装: 实验重息壤瓶 + 5芽针溶液 =>[灌装机]=> 实验重息壤瓶-芽针溶液
-  实验重息壤瓶生产: 重息壤 =>[塑形机+20s]=> 实验重息壤瓶
-  实验重息壤零件生产: 重息壤 =>[配件机+20s]=> 实验重息壤零件
-  实验玉铜发散器生产: 实验重息壤零件 + 赫铜块 =>[封装机+10s]=> 实验玉铜发散器
-  息壤玉葫芦生产: 实验重息壤瓶-芽针溶液 + 实验玉铜发散器 =>[封装机+10s]=> 息壤玉葫芦
+  实验重息壤瓶-芽针溶液灌装: 活动：实验重息壤瓶 + 5芽针溶液 =>[灌装机]=> 实验重息壤瓶-芽针溶液
+  实验重息壤瓶生产: 活动：重息壤 =>[塑形机+20s]=> 实验重息壤瓶
+  实验重息壤零件生产: 活动：重息壤 =>[配件机+20s]=> 实验重息壤零件
+  实验玉铜发散器生产: 活动：实验重息壤零件 + 赫铜块 =>[封装机+10s]=> 实验玉铜发散器
+  息壤玉葫芦生产: 活动：实验重息壤瓶-芽针溶液 + 实验玉铜发散器 =>[封装机+10s]=> 息壤玉葫芦
 
 # 1机器葫芦：0.5/s瓶，0.5/s零件
 # 0.5/s瓶：1机器：2带息壤
@@ -48,7 +48,6 @@
 类别:
   瓶子: [实验息壤瓶, 实验重息壤瓶]
   机器: [扩容反应池, 提纯机]
-  限时: [实验息壤瓶, 实验息壤零件, 息壤葫芦, 实验重息壤瓶, 实验重息壤零件, 实验玉铜发散器, 息壤玉葫芦]
 
 图标:
   实验息壤零件: 0000WW^{RQVRmU|00000VRmU|ZE0pPZE0a<O+hh20004oZDn*}000000000XXk=`10000000000aA{+7000000000000000000004sdC7Z2$lO00031001m$Y;R)#0000)000620RR910RR93u>b%9XaE8L0003100FK5009F4002U1X>Mi!000000ssI28fk83WdZ;I000310AY48F+*=`Z*l+t000_kZf0cy000000ssJEb}%tPY;b5{000008fkK6W&i*H000004q<h8YybiP0RRC2006^jaB^?}005n7aAR)(000zeb8uw<00000001Ze001Ze000nhX?SS>000032nYxO000bOb}>VN01N;C000wXZ)|dIV{CW;0RRmE27mwn01j|zcxeCt000390000CVRkV?fdCu;0000uVRd*z00000b#iVxZE$60I&E-eXF@t-X=89Yb9r-gWo>ghVRd+EY-wR~c{*WiaA;uw0000UX>e^}0000000002009I60)qqq0t5jCh6exu19NR;VRRAz3I-SzXPt#WGWG!!01Poe-7AJD`_Zk&L$vk5a+}wGtn-`y^-z#OY^O%26P=y=tJSK>Tt0=LwyvPR842LGPeYt{rAnCR1mn;s#cB`Hvoo$0Tid<Mw9DD6ZkQio7?DxnPQ`3L43B|Gxn+GfAnd&+3R6hMHRyVkzA3>GiD4;QX}V!IfiwmLPuFZ;J_`CxwrUQ!@8pPFEH$gl(|RJE-Bk7t2{f<aC0ExeOXz){urg#0@YuU87(Z8hlHi@992ogY(A)2@nwrA+gCL{35bn^r6-<~ejIRM(p_e=D(H`D_LXH5=%>cX>-Q$Fv8@6@_Vayn6mk!~UsS*GR2^bY;ouUF74G1#W1Qf@IhGhZ>Af8YF00`YoZLTNSXm!nbz>YL#S2Db$K>S~z@ud`cS>b~L#Yh+$|9Z%0Echke#L_y|X}E!rmVTC}AMM^6{)S3hU+;2Zyr0!f*3tHM2iEffZE~k2C<tKHm|*njO7Z~<8b4jcUT&A0R%UE>TOm_O1;=C#u?nmsWQCKq?-c92BS@tc({Q^Q&jutvT1ZR#WR1Yg3SMm0RNzv@{<~xcp7W8=qu(9J5nQ*z*QE1*G=SHmK%%)e7Wu|*?SCl)Xe>)By_Iq2enZmSVDKl?9<mJraJOb!_*b<vsV)frP$(e|OZcw~nwq^Xd0hIl8?T_rm6Pyaut7fgfYkruZUDIj#+>{e7A22qGk>OdBR29c*VtI+ZG*Kbnppb~HA|*zh%4IemjE0~zg*mq;6t1VYVFOVtD*?61k|T-CMH*QBYwvMw2vBeQ_0ua#&GbTFWV!681lAG(ZorF1w{05kyy$i-cdz(ForkdJwL+y={ViFQ}jHsCcIVS&H46O13{!#VI?>mudTYTG*!p{%9AmP4QbwM0tYF3;nw&dB>&^Uz}<*kelVok$lrK*%F;I{@b3grYDgo;`Ign4jP?AF1{eYsEhas*b33TyU>n_Wno~lARtIypdIT*K{p=exyQ(lY5e!y?7cC0PE>=^f7@kzg9%{j|R}4l`@@R&1fAYgQ*Yto<<s98nbK^4~xTnP^5JSdbmr?E+X1K8Zl_N!X9LNwiiX^cnJkK`}8B7>vi8Yd8&Q7}8gvl+m7DQhPLj
