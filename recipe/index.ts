@@ -68,6 +68,7 @@ setupNavigationBar();
 
 // layout algorithm only need these
 interface NodeLike {
+    data?: any,
     children: NodeLike[],
     position?: number,
     thread?: NodeLike,
@@ -205,6 +206,26 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
     return itemNode;
 }
 
+// at the time of writing, this function's core logic should be same as
+// https://github.com/FreskyZ/small/blob/main/archive/endfield/aesthetic/tidytree2.ts I guess
+// and an error has been found that a node's child nodes all have smaller position than this node, make it not authentic,
+// you may blame this line for last commit for code and data to reproduce the issue, the item is 灼铜装备原件, and dig down
+// to find 重息壤 subtree's root node position is smaller than expected value, also seen in 重息壤 itself's panel, then as
+// an attempt for smaller reproduction, disable 息壤生产 recipe make 息壤 also have position error, minimal reproduction has
+// these recipes:
+//   息壤气 =>[固气转化机]=> 息壤
+//   碳块 + 清水 =>[天有洪炉]=> 息壤
+//   原木 =>[精炼炉]=> 碳块
+//   柑实 =>[精炼炉]=> 碳块
+//   砂叶 =>[精炼炉]=> 碳块
+//   芽针 =>[精炼炉]=> 碳块
+//   荞花 =>[精炼炉]=> 碳块
+//   锦草 =>[精炼炉]=> 碳块
+// the order of 息壤 recipes and the order in 碳块+清水 is significant, the order for 碳块 recipes is not significant I guess
+// ...
+// fixed, I think this comes from large leftcursoroffset from non-first child node while first child node is very small,
+// and I think right part handling is very different from left part handling and no such issue
+
 function layoutRecipeTree(tree: NodeLike) {
     // position in this layout algorithm represents 1 unit in render operation, this min distance must be 1
     const MinDistance = 1;
@@ -227,12 +248,24 @@ function layoutRecipeTree(tree: NodeLike) {
             childIndex == childCount - 1 ? { node: thisnode.children[childIndex], offset: 0 } : { node: null, offset: undefined });
 
         while (activeIndexes.length) {
+            if (thisnode.data?.name == '息壤') { console.log(`loop activeindexes=${activeIndexes}`); }
 
             for (const childIndex of activeIndexes) {
                 if (leftCursors[childIndex].thread) {
+                    // #6 leftcursoroffsets calculation
+                    if (thisnode.data?.name == '息壤') console.log(`  subtree[${childIndex}] left cursor go down from #${leftCursors[childIndex].data?.name} to thread #${
+                        leftCursors[childIndex].thread.data?.name} offset ${leftCursorOffsets[childIndex]} increase ${leftCursors[childIndex].threadOffset}`);
                     leftCursorOffsets[childIndex] += leftCursors[childIndex].threadOffset;
                     leftCursors[childIndex] = leftCursors[childIndex].thread;
                 } else if (leftCursors[childIndex].children.length) {
+                    // #6 leftcursoroffsets calculation
+                    // RESULT: subtree[1] left cursor go down from #息壤生产-惰气环境 to #碳块 offset 0 increase -0.5
+                    //         subtree[1] left cursor go down from #碳块 to #原木烧炭 offset -0.5 increase -2.5
+                    //         expected if leftcursoroffsets is relative to subtree root, or thisnode's child's position
+                    //         but step #5 leftmostdescendantposition is directly using leftcursoroffsets value and used to determine thisnode position
+                    // RESULT: add thisnode.child[leftmostchildindex].position to leftmostdescendantposition calculation fixed the issue and seems not affecting others?
+                    if (thisnode.data?.name == '息壤') console.log(`  subtree[${childIndex}] left cursor go down from #${leftCursors[childIndex].data?.name} to #${
+                        leftCursors[childIndex].children[0].data?.name} offset ${leftCursorOffsets[childIndex]} increase ${leftCursors[childIndex].children[0].position}`);
                     leftCursors[childIndex] = leftCursors[childIndex].children[0];
                     leftCursorOffsets[childIndex] += leftCursors[childIndex].position;
                 } else if (childIndex != activeIndexes[0] || activeIndexes.length == 1) {
@@ -268,13 +301,16 @@ function layoutRecipeTree(tree: NodeLike) {
                                 thisnode.children[childIndex].position += increaseDistance / (rightIndex - leftIndex);
                             }
                         }
-                        if ((thisnode as any).data.name == '重息壤')
-                        console.log(`  push apart subtree[${leftIndex}] node #${(thisnode.children[leftIndex] as any).data.name} and subtree[${
-                            rightIndex}] #${(thisnode.children[rightIndex] as any).data.name} increase distance ${increaseDistance}, ${thisnode.children[rightIndex].position}`);
                     }
                 }
             }
+            // #6.1 after push away in this level, child's position
+            if (thisnode.data?.name == '息壤') for (const child of thisnode.children) {
+                if ((thisnode as any).data?.name == '息壤') { console.log(`  after push away at this level, node #${(child as any).data.name} position ${child.position}`); }
+            }
 
+            // this initialized to activeindexes[0] and if subtree activeindexes[0] ends and created thread here,
+            // this variable points to the threaded node's subtree, this does not necessary mean updated leftcursors[leftmostchildindex] is more left than initial leftcursors[leftmostchildindex] 
             let leftmostChildIndex = activeIndexes[0];
             if (activeIndexes.length > 1 && !rightCursors[leftmostChildIndex]) {
                 let subtreeDistance = 0;
@@ -286,6 +322,7 @@ function layoutRecipeTree(tree: NodeLike) {
                 if (nextLeftmostChildIndexIndex < activeIndexes.length) {
                     const nextLeftmostChildIndex = activeIndexes[nextLeftmostChildIndexIndex];
                     subtreeDistance += thisnode.children[nextLeftmostChildIndex].position;
+                    // if you think leftcursors records nodes at same level, that's because leftcursors[leftmostchildindex] has ended and don't move forward and kept at last level
                     leftCursors[leftmostChildIndex].thread = leftCursors[nextLeftmostChildIndex];
                     leftCursors[leftmostChildIndex].threadOffset = leftCursorOffsets[nextLeftmostChildIndex] - leftCursorOffsets[leftmostChildIndex] + subtreeDistance;
                     leftmostChildIndex = nextLeftmostChildIndex;
@@ -309,7 +346,19 @@ function layoutRecipeTree(tree: NodeLike) {
 
             activeIndexes = newActiveIndexes;
             if (activeIndexes.length) {
-                leftmostDescendantPosition = Math.min(leftmostDescendantPosition, leftCursorOffsets[leftmostChildIndex]);
+                // #5. determine leftmost descendant position in main loop
+                // RESULT: at last loop of activeindex=[0,1], at the level of 息壤气's placeholder node,
+                //         leftmost position become -3 because leftcursoroffsets[leftmostchildindex] = -3, leftmostchildindex is subtree index
+                //         also leftcursors=[placeholder node, 原木烧炭], leftcursoroffsets=[0, -3]
+                //         at this level, expect leftmostchildindex=0, expect leftcursoroffsets=[0, 1]
+                //         I guess incorrect recording of leftcursoroffsets result in incorrect leftmostchildindex
+                if ((thisnode as any).data?.name == '息壤') {
+                    console.log(`leftmost=min(leftmost=${leftmostDescendantPosition}, leftcursoroffsets[leftmostchildindex=${leftmostChildIndex}]=${leftCursorOffsets[leftmostChildIndex]}`);
+                    console.log(`leftcursors ${leftCursors.map(c => (c as any)?.data?.name ?? '(no name)').join(',')} leftcursoroffsets: ${leftCursorOffsets}`);
+                }
+                // #7. so the guess that leftmostchildindex is incorrect is incorrect, leftmostchildindex only means to find last level's leftmost node,
+                //     and use that to compare with previous loops' leftmostdescendantposition, correctly base leftcursoroffsets on child.position correctly fixed the issue
+                leftmostDescendantPosition = Math.min(leftmostDescendantPosition, thisnode.children[leftmostChildIndex].position + leftCursorOffsets[leftmostChildIndex]);
                 if (!rightmostNodes[rightmostChildIndex].node || rightmostNodes[rightmostChildIndex].offset < rightCursorOffsets[rightmostChildIndex]) {
                     rightmostNodes[rightmostChildIndex].node = rightCursors[rightmostChildIndex];
                     rightmostNodes[rightmostChildIndex].offset = rightCursorOffsets[rightmostChildIndex];
@@ -327,11 +376,19 @@ function layoutRecipeTree(tree: NodeLike) {
                 rightmostDescendantPosition = Math.max(rightmostDescendantPosition, subtreeDistance + rightmostNodes[childIndex].offset);
             }
         }
+        // #4. leftmost descendant position and rightmost descendant position
+        // RESULT: 息壤凝华=0，息壤生产-惰气环境=4, same as expected
+        // RESULT: leftmost=-3, rightmost=7, expect leftmost=0, rightmost=7
+        // console.log({ name: (thisnode as any).data?.name, leftmostDescendantPosition, rightmostDescendantPosition });
+        // for (const child of thisnode.children) {
+        //     if ((thisnode as any).data?.name == '息壤') { console.log(`node #${(child as any).data.name} position ${child.position}`); }
+        // }
 
-        console.log(`thisnode ${(thisnode as any).data.name} leftmostdescendent ${leftmostDescendantPosition} rightmostdescdent ${rightmostDescendantPosition}`);
         let currentPosition = -(leftmostDescendantPosition + rightmostDescendantPosition) / 2;
         for (const child of thisnode.children) {
             currentPosition = child.position += currentPosition;
+            // #3. after assignment of position of 息壤's child nodes, RESULT same as #2
+            // if ((thisnode as any).data?.name == '息壤') { console.log(`node #${(child as any).data.name} position ${child.position}`); }
         }
     }
     setup(tree);
@@ -353,6 +410,9 @@ function layoutRecipeTree(tree: NodeLike) {
         }
     }
     function setPosition(node: NodeLike, position: number) {
+        // #2. before normalization position, before assignment, node.position is relative position to its parent node
+        //     RESULT: actual 息壤凝华 = -2, 息壤生产-惰气环境 = 2, expect -3.5 and 0.5
+        // console.log(`node #${(node as any).data?.name ?? '(no name)'} position ${node.position}`);
         node.position = position;
         node.thread = null;
         node.threadOffset = undefined;
@@ -538,6 +598,8 @@ function drawRecipeTree(root: ItemNode) {
     }
 
     function createNode(item: ItemNode, path: string[]) {
+        // #1. confirm result position have error
+        // console.log(`create node, #${item.data.name}, position = ${item.position}`);
         const parentRecipe = path.length == 0 ? null : pagedata.recipes.find(r => r.name == path.at(-1));
 
         const itemElement = j(panelElement, 'div', {
