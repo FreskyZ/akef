@@ -34,6 +34,7 @@ const elements = {
     sortButton: document.querySelector('button#sort') as HTMLButtonElement,
     clearButton: document.querySelector('button#clear') as HTMLButtonElement,
     limitedTimeCheckbox: document.querySelector('input#limited-time') as HTMLInputElement,
+    recipeFilterInput: document.querySelector('textarea#muzumi') as HTMLTextAreaElement,
 };
 function setupNavigationBar() {
     for (const item of pagedata.items) {
@@ -137,7 +138,8 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
     }
 
     // all following pagedata.recipes use this filter
-    const visibleRecipes = pagedata.recipes.filter(r => includeLimitedTime || !r.event);
+    const disabledRecipes = parseRecipeFilterSetting();
+    const visibleRecipes = pagedata.recipes.filter(r => (includeLimitedTime || !r.event) && !disabledRecipes.includes(r.name));
     if (!path.length) {
         const productItemNames = new Set<string>();
         for (const recipe of visibleRecipes.filter(r => r.inputs.some(r => r.name == item.name))) {
@@ -176,7 +178,7 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
         // UPDATE this is more error when you find the subtrees are already pushing away because of subtree themselves' descendent node
         // because current data don't have >16 leading space and > 24 trailing space, disable this logic for now, old value is 36 if you forget
         if (lastRecipeTrailingElementsSpace + thisRecipeLeadingElementsSpace > 360) {
-            console.log(`placeholder node before recipe ${recipe.name}`);
+            // console.log(`placeholder node before recipe ${recipe.name}`);
             itemNode.children.push({ data: recipe, depth: path.length, children: [], kind: 'placeholder' });
         }
         lastRecipeTrailingElementsSpace = (recipe.outputs.length - 1) * 24 + (recipe.event ? 12 : 0);
@@ -519,11 +521,6 @@ function drawRecipeTree(root: ItemNode) {
     /* close */ j(panelElement, 'button', { className: 'close', innerText: 'X' },
         e => e.addEventListener('click', () => handleClosePanel(root.data.name)));
     /* title */ j(panelElement, 'span', { className: 'title', innerText: root.data.name });
-    /* config? */ j(panelElement, 'input', { className: 'config' }, e => {
-        e.addEventListener('change', () => {
-            console.log('input.config change, ', e.value);
-        });
-    });
 
     // try bfs to make element order in main element more clear
     let remainingItems: [ItemNode, string[]][] = [[root, []]]; // item and ancestor path
@@ -713,6 +710,7 @@ function drawRecipeTree(root: ItemNode) {
             const mainLineElement = j(recipeElement, 'div', { className: 'recipe-line main-line' });
             /* left connect line */ j(mainLineElement, 'div', { className: 'connect-line connect-line1' });
             /* machine name */ j(mainLineElement, 'div', { className: `machine-name`, innerText: recipe.data.machine }, e => {
+                e.title = recipe.data.name;
                 const selector = `div.recipe-node[data-id="${recipe.data.name}"]>div.main-line>div.machine-name`;
                 e.addEventListener('mouseenter', () =>
                     Array.from(panelElement.querySelectorAll(selector)).forEach(e => e.classList.add('highlight')));
@@ -799,13 +797,39 @@ function updateItemList() {
     }
     items.forEach(i => elements.itemList.appendChild(i));
 }
+
 elements.searchInput.addEventListener('change', () => {
     updateItemListDisplay();
 });
 // for now, it is NOT implemented to update or close opened panel because of this checkbox change
+const limitedTimeCheckboxStorageKey = 'advanced-recipe-tree:display-limited-time';
 elements.limitedTimeCheckbox.addEventListener('change', () => {
     updateItemListDisplay();
+    localStorage.setItem(limitedTimeCheckboxStorageKey, elements.limitedTimeCheckbox.checked ? '1' : '0');
 });
+const recipeFilterInputStorageKey = 'advanced-recipe-tree:muzumi-setting';
+elements.recipeFilterInput.addEventListener('input', () => {
+    localStorage.setItem(recipeFilterInputStorageKey, elements.recipeFilterInput.value);
+});
+function parseRecipeFilterSetting() {
+    const raw = elements.recipeFilterInput.value;
+    const startIndex = raw.indexOf('这个，');
+    const endIndex = raw.indexOf('不需要了');
+    const rawRecipeNames = raw.substring(startIndex + 3, endIndex).split('，');
+    const recipeNames = rawRecipeNames.filter(x => x).map(x => x.trim()).filter(x => pagedata.recipes.some(r => r.name == x));
+    return recipeNames;
+}
+function setupNavigationBar2() {
+    const checkboxValue = localStorage.getItem(limitedTimeCheckboxStorageKey);
+    if (checkboxValue) {
+        elements.limitedTimeCheckbox.checked = checkboxValue == '1';
+    }
+    const textareaValue = localStorage.getItem(recipeFilterInputStorageKey);
+    if (textareaValue) {
+        elements.recipeFilterInput.value = textareaValue;
+    }
+    updateItemListDisplay();
+}
 function updateItemListDisplay() {
 
     // search condition say this element can display
@@ -830,6 +854,7 @@ function updateItemListDisplay() {
         itemElement.style.display = passSearch(itemElement) && passLimitedTime(itemElement) ? '' : 'none';
     }
 }
+setupNavigationBar2();
 
 function handleFocusPanel(itemId: string) {
     const panels: HTMLDivElement[] = Array.from(elements.main.querySelectorAll('div.panel'));

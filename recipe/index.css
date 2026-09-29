@@ -28,6 +28,9 @@ header > a {
 /* nav */
 nav {
     width: 276px;
+    display: flex;
+    flex-flow: column;
+    height: calc(100vh - 56px);
 }
 nav>div.header {
     height: 24px;
@@ -61,6 +64,8 @@ nav>div.header>button>svg {
 nav>div.search-box {
     display: flex;
     align-items: center;
+    padding: 2px 0;
+    border-top: 1px solid gray;
     border-bottom: 1px solid gray;
 }
 nav>div.search-box>input {
@@ -70,21 +75,28 @@ nav>div.search-box>input {
     line-height: 20px;
     width: 264px;
 }
-nav>div.filters {
+nav>div.limited-time-line {
     display: flex;
     gap: 4px;
     align-items: center;
     margin: 4px 0;
 }
-nav>div.filters>input {
+nav>div.limited-time-line>input {
     cursor: pointer;
 }
-nav>div.filters>label {
+nav>div.limited-time-line>label {
     cursor: pointer;
     font-size: 12px;
 }
+nav>div.muzumi-line>textarea#muzumi {
+    resize: vertical;
+    width: 264px;
+    min-height: 24px;
+    max-height: 100px;
+    font-size: 12px;
+}
 div#nav-list-container {
-    height: calc(100vh - 132px);
+    flex: 1;
     overflow-x: hidden;
     overflow-y: auto;
     border-top: 1px solid gray;
