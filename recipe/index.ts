@@ -1,7 +1,7 @@
 
 interface ItemData {
     name: string, // name for human
-    icon: [number, number],
+    icon?: [number, number],
     pinyin: string, // pinyin for string
 }
 interface RecipeData {
@@ -25,14 +25,15 @@ function calculateItemImageSize(count: number) {
     const gridHeight = gridWidth * (gridWidth - 1) < count ? gridWidth : gridWidth - 1;
     return [gridWidth * 40, gridHeight * 40];
 }
-const itemImageSize = calculateItemImageSize(pagedata.items.length);
+const itemImageSize = calculateItemImageSize(pagedata.items.filter(i => i.icon).length);
 
 const elements = {
     itemList: document.querySelector('nav ul') as HTMLUListElement,
-    searchInput: document.querySelector('div#nav-header>input') as HTMLInputElement,
+    searchInput: document.querySelector('input#search') as HTMLInputElement,
     main: document.querySelector('main'),
     sortButton: document.querySelector('button#sort') as HTMLButtonElement,
     clearButton: document.querySelector('button#clear') as HTMLButtonElement,
+    limitedTimeCheckbox: document.querySelector('input#limited-time') as HTMLInputElement,
 };
 function setupNavigationBar() {
     for (const item of pagedata.items) {
@@ -40,13 +41,19 @@ function setupNavigationBar() {
         itemElement.dataset['id'] = item.name;
         const imageElement = document.createElement('div');
         imageElement.className = 'image';
-        // imageElement.alt = item.name;
-        imageElement.title = item.name;
-        imageElement.style.backgroundImage = `url("./item.avif")`;
-        imageElement.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-        // background-position is very mysterious
-        // https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/background-position
-        imageElement.style.backgroundPosition = `${-item.icon[1] * 40}px ${-item.icon[0] * 40}px`;
+        
+        // allow item without image should be useful for test data and new data without image
+        if (item.icon) {
+            imageElement.style.backgroundImage = `url("./item.avif")`;
+            imageElement.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
+            // background-position is very mysterious
+            // https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/background-position
+            imageElement.style.backgroundPosition = `${-item.icon[1] * 40}px ${-item.icon[0] * 40}px`;
+        } else {
+            // there is already a name beside, so display a NA here
+            // imageElement.alt = item.name;
+            imageElement.innerText = 'N/A';
+        }
         itemElement.appendChild(imageElement);
         const nameElement = document.createElement('div');
         nameElement.className = 'name';
@@ -55,19 +62,6 @@ function setupNavigationBar() {
         elements.itemList.appendChild(itemElement);
         itemElement.addEventListener('click', () => handleToggleOpen(item));
     }
-
-    // search
-    elements.searchInput.addEventListener('change', () => {
-        for (const itemElement of Array.from<HTMLLIElement>(elements.itemList.children as any)) {
-            if (!elements.searchInput.value) {
-                itemElement.style.display = 'flex';
-            } else {
-                const item = pagedata.items.find(i => i.name == itemElement.dataset['id']);
-                const found = item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
-                itemElement.style.display = found ? 'flex' : 'none';
-            }
-        }
-    });
 }
 setupNavigationBar();
 
@@ -113,7 +107,7 @@ interface RecipeNode extends NodeLike {
 // for duplicate item in tree, allow same item appear in different line, disallow same item in same line
 // path: node id[] from root to current item, include root, not include current item, empty for the main item
 // return ItemNode
-function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: ItemNode['ellipsisReason']) {
+function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: boolean, ellipsisReasonHint?: ItemNode['ellipsisReason']) {
     const itemNode: ItemNode = {
         data: item,
         depth: path.length,
@@ -141,13 +135,16 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
         itemNode.children.push({ data: null, depth: path.length, children: [], kind: 'placeholder' });
         return itemNode;
     }
+
+    // all following pagedata.recipes use this filter
+    const visibleRecipes = pagedata.recipes.filter(r => includeLimitedTime || !r.event);
     if (!path.length) {
         const productItemNames = new Set<string>();
-        for (const recipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name))) {
+        for (const recipe of visibleRecipes.filter(r => r.inputs.some(r => r.name == item.name))) {
             // dont include fill bottle recipes in possible products...
             if (recipe.outputs.length == 1 && pagedata["filled-items"].includes(recipe.outputs[0].name)) {
                 // ...but you can include the result bottle+fluid item's possible products
-                for (const nextrecipe of pagedata.recipes.filter(r => r.inputs.some(r => r.name == recipe.outputs[0].name))) {
+                for (const nextrecipe of visibleRecipes.filter(r => r.inputs.some(r => r.name == recipe.outputs[0].name))) {
                     // filled item don't have a filled item possible product
                     nextrecipe.outputs.forEach(r => productItemNames.add(r.name));
                 }
@@ -156,7 +153,8 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
             }
         }
         itemNode.possibleProducts = Array.from(productItemNames).map(n => pagedata.items.find(i => i.name == n));
-        itemNode.vanishingRecipes = pagedata.recipes.filter(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0);
+        // when will there be limited time vanishing recipes?
+        itemNode.vanishingRecipes = visibleRecipes.filter(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0);
     }
     // this was 10, but new game content, namely 赫铜 technology, really push this pass 10
     if (path.length > 20) {
@@ -164,7 +162,7 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
     }
 
     let lastRecipeTrailingElementsSpace = 0;
-    for (const recipe of pagedata.recipes.filter(r => r.outputs.some(r => r.name == item.name))) {
+    for (const recipe of visibleRecipes.filter(r => r.outputs.some(r => r.name == item.name))) {
         // ATTENTION TODO for now 反应池 and 扩容反应池 is same, ignore 反应池 recipes
         if (recipe.machine == '反应池') { continue; }
 
@@ -191,12 +189,13 @@ function collectRecipeTree(item: ItemData, path: string[], ellipsisReasonHint?: 
                     name: input.name,
                     icon: null,
                     pinyin: null,
-                }, [...path, item.name]));
+                }, [...path, item.name], includeLimitedTime));
             } else {
-                const ellipsisReason = pagedata.recipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0)
+                // when will there be limited time sewage reuse recipes?
+                const ellipsisReason = visibleRecipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0)
                     ? 'sewage-reuse' : recipe.machine == '固气转化机' || recipe.machine == '液气转化机' ? 'phase-transitioner' : null;
                 const inputItemData = pagedata.items.find(i => i.name == input.name);
-                children.push(collectRecipeTree(inputItemData, [...path, item.name], ellipsisReason));
+                children.push(collectRecipeTree(inputItemData, [...path, item.name], includeLimitedTime, ellipsisReason));
             }
         }
         itemNode.children.push({ data: recipe, depth: path.length, children });
@@ -267,6 +266,9 @@ function layoutRecipeTree(tree: NodeLike) {
                                 thisnode.children[childIndex].position += increaseDistance / (rightIndex - leftIndex);
                             }
                         }
+                        if ((thisnode as any).data.name == '重息壤')
+                        console.log(`  push apart subtree[${leftIndex}] node #${(thisnode.children[leftIndex] as any).data.name} and subtree[${
+                            rightIndex}] #${(thisnode.children[rightIndex] as any).data.name} increase distance ${increaseDistance}, ${thisnode.children[rightIndex].position}`);
                     }
                 }
             }
@@ -324,6 +326,7 @@ function layoutRecipeTree(tree: NodeLike) {
             }
         }
 
+        console.log(`thisnode ${(thisnode as any).data.name} leftmostdescendent ${leftmostDescendantPosition} rightmostdescdent ${rightmostDescendantPosition}`);
         let currentPosition = -(leftmostDescendantPosition + rightmostDescendantPosition) / 2;
         for (const child of thisnode.children) {
             currentPosition = child.position += currentPosition;
@@ -406,19 +409,27 @@ function createSVGElement(parent: Element, pathdata: string[], className?: strin
     return svgElement;
 }
 function setupImageElement(element: HTMLDivElement, item: ItemData) {
-    element.style.backgroundImage = `url("./item.avif")`;
-    element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
-    element.style.backgroundPosition = `-${item.icon[1] * 40}px -${item.icon[0] * 40}px`;
-    // // this is not good, cannot control alpha of one of the images, and if you want to make overlay image smaller, the other items again appears into the border
-    // element.style.backgroundImage = `url("./item.avif"), url("./item.avif")`;
-    // element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px, ${itemImageSize[0]}px ${itemImageSize[1]}px`;
-    // // multiple background image z index is *defined* to be reversed, why?
-    // element.style.backgroundPosition = `-${filled[1].icon[1] * 40}px -${filled[1].icon[0] * 40}px, -${filled[0].icon[1] * 40}px -${filled[0].icon[0] * 40}px`;
+    if (item.icon) {
+        element.style.backgroundImage = `url("./item.avif")`;
+        element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px`;
+        element.style.backgroundPosition = `-${item.icon[1] * 40}px -${item.icon[0] * 40}px`;
+        // // this is not good, cannot control alpha of one of the images, and if you want to make overlay image smaller, the other items again appears into the border
+        // element.style.backgroundImage = `url("./item.avif"), url("./item.avif")`;
+        // element.style.backgroundSize = `${itemImageSize[0]}px ${itemImageSize[1]}px, ${itemImageSize[0]}px ${itemImageSize[1]}px`;
+        // // multiple background image z index is *defined* to be reversed, why?
+        // element.style.backgroundPosition = `-${filled[1].icon[1] * 40}px -${filled[1].icon[0] * 40}px, -${filled[0].icon[1] * 40}px -${filled[0].icon[0] * 40}px`;
+    } else {
+        element.innerText = 'N/A';
+    }
 }
 function setupSmallImageElement(element: HTMLDivElement, item: ItemData, size: number) {
-    element.style.backgroundImage = `url("./item.avif")`;
-    element.style.backgroundSize = `${itemImageSize[0]  * size / 40}px ${itemImageSize[1] * size / 40}px`;
-    element.style.backgroundPosition = `-${item.icon[1] * size}px -${item.icon[0] * size}px`;
+    if (item.icon) {
+        element.style.backgroundImage = `url("./item.avif")`;
+        element.style.backgroundSize = `${itemImageSize[0]  * size / 40}px ${itemImageSize[1] * size / 40}px`;
+        element.style.backgroundPosition = `-${item.icon[1] * size}px -${item.icon[0] * size}px`;
+    } else {
+        element.innerText = 'N/A';
+    }
 }
 
 function setupDragMove(element: HTMLDivElement) {
@@ -442,7 +453,7 @@ function setupDragMove(element: HTMLDivElement) {
             beginY = e.clientY;
         }
         function handleMouseUp(_: MouseEvent) {
-            element.style.cursor = 'grab';
+            element.style.cursor = ''; // reset to use css specified cursor: grab
             element.removeEventListener('mouseup', handleMouseUp);
             element.removeEventListener('mousemove', handleMouseMove);
         }
@@ -538,26 +549,23 @@ function drawRecipeTree(root: ItemNode) {
             left: CellWidth * (maxDepth - item.depth) + 20,
             top: CellHeight * item.position + 40,
         });
-        // TODO allow item.icon with empty and display a text inside the div
+        
+        function setupItemImageHighlightTrigger(e: HTMLElement, itemName: string) {
+            const selectors = [
+                `div.item-node[data-id="${itemName}"]>div.image-wrapper`,
+                `div.recipe-line[data-id="${itemName}"]`,
+            ];
+            e.addEventListener('mouseenter', () => selectors.map(selector =>
+                Array.from(panelElement.querySelectorAll(selector)).forEach(e => e.classList.add('highlight'))));
+            e.addEventListener('mouseleave', () => selectors.map(selector =>
+                Array.from(panelElement.querySelectorAll(selector)).forEach(e => e.classList.remove('highlight'))));
+        }
+
         // you can use background-origin: content-box to avoid background-position take padding into calculation,
         // but this still cannot avoid other item's image appear in padding area, so have to use an image wrapper
         const imageWrapperElement = j(itemElement, 'div', { className: 'image-wrapper' }, e => {
-            if (item.data.name != root.data.name) {
-                e.addEventListener('click', () => handleOpenPanel(item.data));
-            }
-            // e.addEventListener('mouseenter', () =>
-            //     Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight')));
-            // e.addEventListener('mouseleave', () =>
-            //     Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight')));
-            e.addEventListener('mouseenter', () => {
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight'));
-                // TODO don't forget this
-                Array.from(panelElement.querySelectorAll(`div.side-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.add('highlight'));
-            });
-            e.addEventListener('mouseleave', () => {
-                Array.from(panelElement.querySelectorAll(`div.item-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight'));
-                Array.from(panelElement.querySelectorAll(`div.side-node[data-id="${item.data.name}"]>div.image-wrapper`)).forEach(e => e.classList.remove('highlight'));
-            });
+            setupItemImageHighlightTrigger(e, item.data.name);
+            if (item.data.name != root.data.name) { e.addEventListener('click', () => handleOpenPanel(item.data)); }
         });
         if (item.filled) {
             /* image */ j(imageWrapperElement, 'div', { className: 'image' }, e => setupImageElement(e, item.filled[0]));
@@ -652,13 +660,12 @@ function drawRecipeTree(root: ItemNode) {
         }
 
         for (const recipe of item.children.filter(r => r.kind != 'placeholder')) {
-            
-            // these properties need to be placed in extra lines
+
             const vibeItem = recipe.data.vibe ? pagedata.items.find(i =>
                 i.name == { '息壤': '息壤气', '惰气': '惰气', '酸气': '酸气' }[recipe.data.vibe]) : null;
             const isPhaseTransitioner = recipe.data.machine == '固气转化机' || recipe.data.machine == '液气转化机';
-
             const leadingElementsSpace = (vibeItem ? 16 : 0) + (isPhaseTransitioner ? 16 : 0);
+
             const recipeElement = j(panelElement, 'div', {
                 className: `recipe-node`,
                 dataset: { 'id': recipe.data.name },
@@ -670,12 +677,12 @@ function drawRecipeTree(root: ItemNode) {
             if (vibeItem) {
                 const vibeLineElement = j(recipeElement, 'div', {
                     className: 'recipe-line vibe-line',
-                    dataset: { 'id': vibeItem.name }, // TODO highlight this
-                });
-                /* image */ j(vibeLineElement, 'div', { className: 'image' }, e => {
-                    setupSmallImageElement(e, vibeItem, 16);
+                    dataset: { 'id': vibeItem.name },
+                }, e => {
+                    setupItemImageHighlightTrigger(e, vibeItem.name);
                     e.addEventListener('click', () => { if (item.data.name != vibeItem.name) { handleOpenPanel(vibeItem); } });
                 });
+                /* image */ j(vibeLineElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, vibeItem, 16));
                 /* description */ j(vibeLineElement, 'span', {}, e => e.innerText = `${recipe.data.vibe}环境`);
             }
             // extra input
@@ -683,12 +690,13 @@ function drawRecipeTree(root: ItemNode) {
                 const xiranGasItem = pagedata.items.find(i => i.name == '息壤气');
                 const extraInputLineElement = j(recipeElement, 'div', {
                     className: 'recipe-line extra-input-line',
-                    dataset: { 'id': xiranGasItem.name }, // TODO highlight this
-                }, e => e.title = '意思是机器不在工作的时候也要息壤气6/min');
-                /* image */ j(extraInputLineElement, 'div', { className: 'image' }, e => {
-                    setupSmallImageElement(e, xiranGasItem, 16);
+                    dataset: { 'id': xiranGasItem.name },
+                }, e => {
+                    e.title = '意思是机器不在工作的时候也要息壤气6/min';
+                    setupItemImageHighlightTrigger(e, xiranGasItem.name);
                     e.addEventListener('click', () => { if (item.data.name != xiranGasItem.name) { handleOpenPanel(xiranGasItem); } });
                 });
+                /* image */ j(extraInputLineElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, xiranGasItem, 16));
                 /* description */ j(extraInputLineElement, 'span', {}, e => e.innerText = `息壤气 6/min`);
             }
 
@@ -730,17 +738,16 @@ function drawRecipeTree(root: ItemNode) {
             for (const output of recipe.data.outputs.filter(o => o.name != item.data.name)) {
                 // for now side product will not be filled item
                 const sideProductItem = pagedata.items.find(i => i.name == output.name);
-                // TODO hover effect has minor issues
                 const sideProductElement = j(recipeElement, 'div', {
                     className: 'recipe-line side-product-line',
-                    dataset: { 'item': sideProductItem.name }, // TODO highlight this
+                    dataset: { 'id': sideProductItem.name },
                 }, e => {
+                    e.title = '副产物（有的时候这个才是主产物）';
+                    setupItemImageHighlightTrigger(e, sideProductItem.name);
                     e.addEventListener('click', () => { if (sideProductItem.name != root.data.name) { handleOpenPanel(sideProductItem); } });
                 });
                 /* image */ j(sideProductElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, sideProductItem, 24));
-                const amount = `x${output.count ?? 1}`;
-                /* title */ j(sideProductElement, 'span', { className: 'title' }, e => e.innerText = `其它产物${sideProductItem.name.length > 4 ? amount : ''}`);
-                /* name */ j(sideProductElement, 'span', { className: 'name' }, e => e.innerText = `${sideProductItem.name}${sideProductItem.name.length <= 4 ? amount : ''}`);
+                /* amount */ j(sideProductElement, 'span', { className: 'amount' }, e => e.innerText = `${sideProductItem.name}x${output.count ?? 1}`);
             }
             // limited time
             if (recipe.data.event) {
@@ -792,14 +799,47 @@ function updateItemList() {
     }
     items.forEach(i => elements.itemList.appendChild(i));
 }
+elements.searchInput.addEventListener('change', () => {
+    updateItemListDisplay();
+});
+// for now, it is NOT implemented to update or close opened panel because of this checkbox change
+elements.limitedTimeCheckbox.addEventListener('change', () => {
+    updateItemListDisplay();
+});
+function updateItemListDisplay() {
+
+    // search condition say this element can display
+    const passSearch = (element: HTMLElement) => {
+        if (!elements.searchInput.value) { return true; }
+        const item = pagedata.items.find(i => i.name == element.dataset['id']);
+        return item.name.includes(elements.searchInput.value) || item.pinyin.includes(elements.searchInput.value.toLocaleLowerCase());
+    };
+    // limited time checkbox say this element can display
+    const passLimitedTime = (element: HTMLElement) => {
+        if (elements.limitedTimeCheckbox.checked) { return true; }
+        const item = pagedata.items.find(i => i.name == element.dataset['id']);
+        const recipes = pagedata.recipes.filter(r => r.outputs.some(o => o.name == item.name));
+        const limitedTimeRecipeCount = recipes.filter(r => r.event).length;
+        // no recipe (like mineral item) or has recipe that is not limited time
+        return recipes.length == 0 || recipes.length != limitedTimeRecipeCount;
+    };
+
+    for (const itemElement of Array.from<HTMLLIElement>(elements.itemList.children as any)) {
+        // only if both condition pass can an item display
+        // if it can display set style to empty string to remove the css property at element level to use that property from css file
+        itemElement.style.display = passSearch(itemElement) && passLimitedTime(itemElement) ? '' : 'none';
+    }
+}
 
 function handleFocusPanel(itemId: string) {
     const panels: HTMLDivElement[] = Array.from(elements.main.querySelectorAll('div.panel'));
     const getZIndex = (e: HTMLDivElement) => e.dataset['id'] == itemId ? 1000 : +(e.style.zIndex ?? '0');
     panels.sort((e1, e2) => getZIndex(e1) - getZIndex(e2));
     for (const [panel, panelIndex] of panels.map((p, i) => [p, i] as const)) {
+        panel.classList.remove('focus');
         panel.style.zIndex = (panelIndex + 1).toString();
     }
+    panels[panels.length - 1].classList.add('focus');
 }
 
 function handleOpenPanel(item: ItemData) {
@@ -809,7 +849,7 @@ function handleOpenPanel(item: ItemData) {
     if (existPanel) {
         handleFocusPanel(item.name);
     } else {
-        const tree = collectRecipeTree(item, []);
+        const tree = collectRecipeTree(item, [], elements.limitedTimeCheckbox.checked);
         layoutRecipeTree(tree);
         drawRecipeTree(tree);
         handleFocusPanel(tree.data.name);

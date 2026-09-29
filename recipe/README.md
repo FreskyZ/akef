@@ -17,3 +17,5 @@ workflow
 - run make-page.ts, this merge item data and recipe data, create build/data.json,
   minify index.css, transpile and mifify index.js, and inline them into index.html to create build/index.html
 - deploy new index.html, data.json and item.avif
+
+by the way, in game recipe tree does not display side product and vibe at the time of writing

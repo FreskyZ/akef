@@ -65,16 +65,20 @@ def build_spirit_sheet():
     for filepath in pathlib.Path('recipe/data').iterdir():
         if filepath.suffix == '.yml':
             with open(filepath) as f:
+                # this parse seems not preserving entry order, it's ok because later item list is completely sorted
                 datafile = yaml.load(f, Loader=yaml.CLoader)
                 if '图标' in datafile:
-                    # TODO this .items, or the yaml.load seems do not preserve dict order, fix by order result item list by utf8 bytes
                     for item_name, item_icon in datafile['图标'].items():
-                        items.append((item_name, item_icon, [0, 0]))
+                        items.append((item_name, item_icon, [None, None]))
+    # NOTE sort by utf8 bytes or else there will be compatiblity issue without other languages, runtimes or libraries
     items.sort(key=lambda i: i[0].encode('utf-8'))
-    grid_width = int(math.ceil(len(items) ** 0.5))
-    grid_height = grid_width if len(items) > grid_width * (grid_width - 1) else grid_width - 1
+    has_icon_items = [item for item in items if item[1]]
+    grid_width = int(math.ceil(len(has_icon_items) ** 0.5))
+    grid_height = grid_width if len(has_icon_items) > grid_width * (grid_width - 1) else grid_width - 1
     with Image.new('RGBA', (grid_width * UNIT_SIZE, grid_height * UNIT_SIZE), (0, 0, 0, 0)) as result_image:
-        for index, (item_name, item_icon_encoded, coordinate) in enumerate(items):
+        # skip empty icon data items,
+        # support items without image should be useful for test data and new data without image
+        for index, (item_name, item_icon_encoded, coordinate) in enumerate(has_icon_items):
             # the old code (if you blame this file and find in make-icon.rs) use a strange layout
             # to wind the icons from top level corner gradually, that's because old data structure
             # persists icon position information so I want to avoid changing old item's coordinate,
@@ -95,7 +99,8 @@ def build_spirit_sheet():
             # add pinyin here, python is too good at nlp so pinyin package
             # is reasonably reliable, compare to nodejs and rust's search result
             pinyin = ''.join([c[0] for c in pypinyin.pinyin(name, style=pypinyin.Style.NORMAL)])
-            sb += f'  {{"name":"{name}","pinyin":"{pinyin}","icon":[{coordinate[0]},{coordinate[1]}]}},\n'
+            icon = f',"icon":[{coordinate[0]},{coordinate[1]}]' if coordinate[0] is not None else ''
+            sb += f'  {{"name":"{name}","pinyin":"{pinyin}"{icon}}},\n'
         sb = sb[:-2] + '\n]'
         f.write(sb)
 
