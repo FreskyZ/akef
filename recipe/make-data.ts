@@ -8,6 +8,8 @@ import yaml from 'yaml';
 // validate new dataset against existing data
 // the final purpose of this script is remove all existing data and this script itself
 
+// TODO try sort and group items and recipes more logically
+
 interface DataContext {
     items: {
         name: string,
@@ -23,6 +25,8 @@ interface DataContext {
         outputs: { name: string, count: number }[],
     }[],
     realFillRecipes: { bottle: string, fluid: string }[],
+    // for now for 扩容反应池 recipes overwrite identical 反应池 recipes
+    pendingRemovalRecipes: string[],
     // for validation
     // system inputs are input items for the overall production system,
     // include plants, minerals and other items only come from manual collection action
@@ -163,7 +167,7 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
                     if (!cx.realFillRecipes.some(r => r.bottle == splitted[0] && r.fluid == splitted[1])) {
                         cx.realFillRecipes.push({ bottle: splitted[0], fluid: splitted[1] });
                     }
-                    return; // ok
+                    return;
                 }
             }
         }
@@ -180,6 +184,8 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
     }
     const serializedRecipes: { name: string, value: string }[] = [];
     for (const recipe of cx.recipes) {
+        if (cx.pendingRemovalRecipes.includes(recipe.name)) { continue; }
+
         if (recipe.machine == '种植机' || recipe.machine == '采种机') {
             console.log(`${filename}: recipe ${recipe.name}: don't add plant recipes`);
         }
@@ -200,9 +206,34 @@ function processDataFile(cx: DataContext, filename: string, originalContent: str
             console.log(`${filename}: recipe ${recipe.name}: don't add vanilla pour bottle recipes`);
         }
 
+        const cmp = (i1: { name: string }, i2: { name: string }) => i1.name.localeCompare(i2.name);
+        if (recipe.machine == '反应池' || recipe.machine == '扩容反应池') {
+            const inputs = [...recipe.inputs].sort(cmp);
+            const outputs = [...recipe.outputs].sort(cmp);
+            const expectThatMachineName = recipe.machine == '反应池' ? '扩容反应池' : '反应池';
+
+            const identical = cx.recipes.find(that =>
+                that.machine == expectThatMachineName && that.time == recipe.time && that.vibe == recipe.vibe
+                && that.inputs.length == recipe.inputs.length && that.outputs.length == recipe.outputs.length
+                && ![...that.inputs].sort(cmp).some((thatInput, index) => thatInput.name != inputs[index].name || thatInput.count != inputs[index].count)
+                && ![...that.outputs].sort(cmp).some((thatOutput, index) => thatOutput.name != outputs[index].name || thatOutput.count != outputs[index].count));
+            if (identical) {
+                // always edit 扩容反应池 recipe, remove 反应池 recipe
+                if (identical.machine == '扩容反应池') {
+                    identical.machine = '扩容/反应池';
+                    cx.pendingRemovalRecipes.push(recipe.name);
+                } else {
+                    recipe.machine = '扩容/反应池';
+                    cx.pendingRemovalRecipes.push(identical.name);
+                }
+                if (!cx.machines.includes('扩容/反应池')) { cx.machines.push('扩容/反应池'); }
+            }
+        }
+
         const serialized = [
-            recipe.inputs.map(i => `${i.name},${i.count}`).join(','),
-            recipe.outputs.map(i => `${i.name},${i.count}`).join(','),
+            // this identical check only happens inside this function, so can use localecompare
+            [...recipe.inputs].sort(cmp).map(i => `${i.name},${i.count}`).join(','),
+            [...recipe.outputs].sort(cmp).map(i => `${i.name},${i.count}`).join(','),
             recipe.machine, recipe.vibe, recipe.time,
         ].filter(x => x).join(',');
         const identical = serializedRecipes.find(r => r.value == serialized);
@@ -218,6 +249,7 @@ const cx: DataContext = {
     items: [],
     recipes: [],
     realFillRecipes: [],
+    pendingRemovalRecipes: [],
     systemInputs: [],
     bottles: [],
     fluids: [],
@@ -229,18 +261,31 @@ for (const filename of (await fs.readdir('recipe/data')).sort((f1, f2) => f1.loc
         processDataFile(cx, filename, await fs.readFile(path.join('recipe', 'data', filename), 'utf-8'));
     }
 }
+
+// handle pending approval
+cx.recipes = cx.recipes.filter(r => !cx.pendingRemovalRecipes.includes(r.name));
+// handle real fill recipes
 for (const { bottle, fluid } of cx.realFillRecipes) {
-    cx.recipes.push({
-        name: `${bottle}-${fluid}灌装`,
-        machine: '灌装机',
-        time: 2,
-        event: false,
-        inputs: [{ name: bottle, count: 1 }, { name: fluid, count: 1 }],
-        outputs: [{ name: `${bottle}-${fluid}`, count: 1 }],
-    });
+    // don't forget none 1+1=1 recipes are allowed
+    if (!cx.recipes.some(r =>
+        r.machine == '灌装机'
+        && r.outputs.length == 1
+        && r.outputs[0].name == `${bottle}-${fluid}`
+        && r.inputs.length == 2
+        && ((r.inputs[0].name == bottle && r.inputs[1].name == fluid)
+            || (r.inputs[0].name == fluid && r.inputs[1].name == bottle))
+    )) {
+        cx.recipes.push({
+            name: `${bottle}-${fluid}灌装`,
+            machine: '灌装机',
+            time: 2,
+            event: false,
+            inputs: [{ name: bottle, count: 1 }, { name: fluid, count: 1 }],
+            outputs: [{ name: `${bottle}-${fluid}`, count: 1 }],
+        });
+    }
 }
 
-// TODO add filled items and time limited items to result data
 const resultdata = {
     'filled-items': cx.realFillRecipes.map(r => `${r.bottle}-${r.fluid}`),
     recipes: cx.recipes.sort((r1, r2) => Buffer.from(r1.name).compare(Buffer.from(r2.name))).map(r => ({

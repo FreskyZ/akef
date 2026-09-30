@@ -85,7 +85,8 @@ interface ItemNode extends NodeLike {
     // - fresh water is normally collected, should not use other recipe's side product as major recipe
     // - sewage as input, this is side product, no need to display full
     // - phase transitioner, don't regard phase transitioning as major recipe
-    ellipsisReason?: 'duplicate' | 'fresh-water' | 'sewage-reuse' | 'phase-transitioner',
+    // - unstable env, this recipe have stable env version, no need to display this
+    ellipsisReason?: 'duplicate' | 'fresh-water' | 'sewage-reuse' | 'phase-transitioner' | 'unstable-env',
     children: RecipeNode[],
     possibleProducts: ItemData[],
     // recipes for sewage harmless treatment
@@ -165,10 +166,8 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
     }
 
     let lastRecipeTrailingElementsSpace = 0;
-    for (const recipe of visibleRecipes.filter(r => r.outputs.some(r => r.name == item.name))) {
-        // ATTENTION TODO for now 反应池 and 扩容反应池 is same, ignore 反应池 recipes
-        if (recipe.machine == '反应池') { continue; }
-
+    const relatedRecipes = visibleRecipes.filter(r => r.outputs.some(r => r.name == item.name));
+    for (const recipe of relatedRecipes) {
         // see recipe node layout, if recipe's element require more space than available, namely 72px
         // allocate a dummy node that regard as a full node in layout process to leave space in real render process
         // NOTE this is effectively another push away logic that only happens between a subtree root node's direct child nodes,
@@ -195,8 +194,22 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
                 }, [...path, item.name], includeLimitedTime));
             } else {
                 // when will there be limited time sewage reuse recipes?
-                const ellipsisReason = visibleRecipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0)
-                    ? 'sewage-reuse' : recipe.machine == '固气转化机' || recipe.machine == '液气转化机' ? 'phase-transitioner' : null;
+                const ellipsisReason = visibleRecipes.some(r => r.inputs.some(r => r.name == item.name) && r.outputs.length == 0) ? 'sewage-reuse'
+                    // when there is only one recipe and is phase transitioning, don't ellipsis it
+                    : relatedRecipes.length > 1 && recipe.machine == '固气转化机' || recipe.machine == '液气转化机' ? 'phase-transitioner'
+                    : !recipe.vibe && relatedRecipes.some(r => {
+                        if (r.vibe != '惰气') { return false; }
+                        // lazy to handle side product
+                        if (recipe.outputs.length != 1 || r.outputs.length != 1) { return false; }
+                        if (recipe.inputs.length != r.inputs.length) { return false; }
+                        // this compare only happen inside this function, so can use localecompare
+                        const thisInputs = recipe.inputs.filter(i => i.name != '分离芯').sort((i1, i2) => i1.name.localeCompare(i2.name));
+                        const thatInputs = r.inputs.filter(i => i.name != '分离芯').sort((i1, i2) => i1.name.localeCompare(i2.name));
+                        // only compare name, the amount will be displayed before the branch is stopped by ellipsis reason
+                        if (thisInputs.some((thisInput, index) => thisInput.name != thatInputs[index].name)) { return false; }
+                        return true;
+                    }) ? 'unstable-env'
+                    : null;
                 const inputItemData = pagedata.items.find(i => i.name == input.name);
                 children.push(collectRecipeTree(inputItemData, [...path, item.name], includeLimitedTime, ellipsisReason));
             }
@@ -205,26 +218,6 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
     }
     return itemNode;
 }
-
-// at the time of writing, this function's core logic should be same as
-// https://github.com/FreskyZ/small/blob/main/archive/endfield/aesthetic/tidytree2.ts I guess
-// and an error has been found that a node's child nodes all have smaller position than this node, make it not authentic,
-// you may blame this line for last commit for code and data to reproduce the issue, the item is 灼铜装备原件, and dig down
-// to find 重息壤 subtree's root node position is smaller than expected value, also seen in 重息壤 itself's panel, then as
-// an attempt for smaller reproduction, disable 息壤生产 recipe make 息壤 also have position error, minimal reproduction has
-// these recipes:
-//   息壤气 =>[固气转化机]=> 息壤
-//   碳块 + 清水 =>[天有洪炉]=> 息壤
-//   原木 =>[精炼炉]=> 碳块
-//   柑实 =>[精炼炉]=> 碳块
-//   砂叶 =>[精炼炉]=> 碳块
-//   芽针 =>[精炼炉]=> 碳块
-//   荞花 =>[精炼炉]=> 碳块
-//   锦草 =>[精炼炉]=> 碳块
-// the order of 息壤 recipes and the order in 碳块+清水 is significant, the order for 碳块 recipes is not significant I guess
-// ...
-// fixed, I think this comes from large leftcursoroffset from non-first child node while first child node is very small,
-// and I think right part handling is very different from left part handling and no such issue
 
 function layoutRecipeTree(tree: NodeLike) {
     // position in this layout algorithm represents 1 unit in render operation, this min distance must be 1
@@ -248,24 +241,12 @@ function layoutRecipeTree(tree: NodeLike) {
             childIndex == childCount - 1 ? { node: thisnode.children[childIndex], offset: 0 } : { node: null, offset: undefined });
 
         while (activeIndexes.length) {
-            if (thisnode.data?.name == '息壤') { console.log(`loop activeindexes=${activeIndexes}`); }
 
             for (const childIndex of activeIndexes) {
                 if (leftCursors[childIndex].thread) {
-                    // #6 leftcursoroffsets calculation
-                    if (thisnode.data?.name == '息壤') console.log(`  subtree[${childIndex}] left cursor go down from #${leftCursors[childIndex].data?.name} to thread #${
-                        leftCursors[childIndex].thread.data?.name} offset ${leftCursorOffsets[childIndex]} increase ${leftCursors[childIndex].threadOffset}`);
                     leftCursorOffsets[childIndex] += leftCursors[childIndex].threadOffset;
                     leftCursors[childIndex] = leftCursors[childIndex].thread;
                 } else if (leftCursors[childIndex].children.length) {
-                    // #6 leftcursoroffsets calculation
-                    // RESULT: subtree[1] left cursor go down from #息壤生产-惰气环境 to #碳块 offset 0 increase -0.5
-                    //         subtree[1] left cursor go down from #碳块 to #原木烧炭 offset -0.5 increase -2.5
-                    //         expected if leftcursoroffsets is relative to subtree root, or thisnode's child's position
-                    //         but step #5 leftmostdescendantposition is directly using leftcursoroffsets value and used to determine thisnode position
-                    // RESULT: add thisnode.child[leftmostchildindex].position to leftmostdescendantposition calculation fixed the issue and seems not affecting others?
-                    if (thisnode.data?.name == '息壤') console.log(`  subtree[${childIndex}] left cursor go down from #${leftCursors[childIndex].data?.name} to #${
-                        leftCursors[childIndex].children[0].data?.name} offset ${leftCursorOffsets[childIndex]} increase ${leftCursors[childIndex].children[0].position}`);
                     leftCursors[childIndex] = leftCursors[childIndex].children[0];
                     leftCursorOffsets[childIndex] += leftCursors[childIndex].position;
                 } else if (childIndex != activeIndexes[0] || activeIndexes.length == 1) {
@@ -303,10 +284,6 @@ function layoutRecipeTree(tree: NodeLike) {
                         }
                     }
                 }
-            }
-            // #6.1 after push away in this level, child's position
-            if (thisnode.data?.name == '息壤') for (const child of thisnode.children) {
-                if ((thisnode as any).data?.name == '息壤') { console.log(`  after push away at this level, node #${(child as any).data.name} position ${child.position}`); }
             }
 
             // this initialized to activeindexes[0] and if subtree activeindexes[0] ends and created thread here,
@@ -346,18 +323,6 @@ function layoutRecipeTree(tree: NodeLike) {
 
             activeIndexes = newActiveIndexes;
             if (activeIndexes.length) {
-                // #5. determine leftmost descendant position in main loop
-                // RESULT: at last loop of activeindex=[0,1], at the level of 息壤气's placeholder node,
-                //         leftmost position become -3 because leftcursoroffsets[leftmostchildindex] = -3, leftmostchildindex is subtree index
-                //         also leftcursors=[placeholder node, 原木烧炭], leftcursoroffsets=[0, -3]
-                //         at this level, expect leftmostchildindex=0, expect leftcursoroffsets=[0, 1]
-                //         I guess incorrect recording of leftcursoroffsets result in incorrect leftmostchildindex
-                if ((thisnode as any).data?.name == '息壤') {
-                    console.log(`leftmost=min(leftmost=${leftmostDescendantPosition}, leftcursoroffsets[leftmostchildindex=${leftmostChildIndex}]=${leftCursorOffsets[leftmostChildIndex]}`);
-                    console.log(`leftcursors ${leftCursors.map(c => (c as any)?.data?.name ?? '(no name)').join(',')} leftcursoroffsets: ${leftCursorOffsets}`);
-                }
-                // #7. so the guess that leftmostchildindex is incorrect is incorrect, leftmostchildindex only means to find last level's leftmost node,
-                //     and use that to compare with previous loops' leftmostdescendantposition, correctly base leftcursoroffsets on child.position correctly fixed the issue
                 leftmostDescendantPosition = Math.min(leftmostDescendantPosition, thisnode.children[leftmostChildIndex].position + leftCursorOffsets[leftmostChildIndex]);
                 if (!rightmostNodes[rightmostChildIndex].node || rightmostNodes[rightmostChildIndex].offset < rightCursorOffsets[rightmostChildIndex]) {
                     rightmostNodes[rightmostChildIndex].node = rightCursors[rightmostChildIndex];
@@ -376,19 +341,10 @@ function layoutRecipeTree(tree: NodeLike) {
                 rightmostDescendantPosition = Math.max(rightmostDescendantPosition, subtreeDistance + rightmostNodes[childIndex].offset);
             }
         }
-        // #4. leftmost descendant position and rightmost descendant position
-        // RESULT: 息壤凝华=0，息壤生产-惰气环境=4, same as expected
-        // RESULT: leftmost=-3, rightmost=7, expect leftmost=0, rightmost=7
-        // console.log({ name: (thisnode as any).data?.name, leftmostDescendantPosition, rightmostDescendantPosition });
-        // for (const child of thisnode.children) {
-        //     if ((thisnode as any).data?.name == '息壤') { console.log(`node #${(child as any).data.name} position ${child.position}`); }
-        // }
 
         let currentPosition = -(leftmostDescendantPosition + rightmostDescendantPosition) / 2;
         for (const child of thisnode.children) {
             currentPosition = child.position += currentPosition;
-            // #3. after assignment of position of 息壤's child nodes, RESULT same as #2
-            // if ((thisnode as any).data?.name == '息壤') { console.log(`node #${(child as any).data.name} position ${child.position}`); }
         }
     }
     setup(tree);
@@ -410,9 +366,6 @@ function layoutRecipeTree(tree: NodeLike) {
         }
     }
     function setPosition(node: NodeLike, position: number) {
-        // #2. before normalization position, before assignment, node.position is relative position to its parent node
-        //     RESULT: actual 息壤凝华 = -2, 息壤生产-惰气环境 = 2, expect -3.5 and 0.5
-        // console.log(`node #${(node as any).data?.name ?? '(no name)'} position ${node.position}`);
         node.position = position;
         node.thread = null;
         node.threadOffset = undefined;
@@ -522,6 +475,13 @@ function setupDragMove(element: HTMLDivElement) {
     });
 }
 
+// TODO try move phase transitioning items beside main item,
+// something like, 息壤溶液 <==5 相变机 2==> 息壤气 <==1 相变机 1==>, and draw their own recipes
+// this is very large change, only work if there is other large change planed for this program,
+// in that case, formalize node's width concept in layout algorithm, current layout algorithm node
+// don't have a width and is only limited by their minimal distance is 1, to handle different width
+// recipe nodes and item nodes, assign a calculated width (in px) to nodes, and change minimal distance to like 8px or 16px
+
 function drawRecipeTree(root: ItemNode) {
 
     // you can go down boundaries of the tree for this information,
@@ -598,8 +558,6 @@ function drawRecipeTree(root: ItemNode) {
     }
 
     function createNode(item: ItemNode, path: string[]) {
-        // #1. confirm result position have error
-        // console.log(`create node, #${item.data.name}, position = ${item.position}`);
         const parentRecipe = path.length == 0 ? null : pagedata.recipes.find(r => r.name == path.at(-1));
 
         const itemElement = j(panelElement, 'div', {
@@ -643,6 +601,7 @@ function drawRecipeTree(root: ItemNode) {
                 'fresh-water': '虽然也有配方可以产生水，但是你应该用采集的水',
                 'sewage-reuse': '污水是这些配方的副产物，所以就不继续显示了，想看可以点进去',
                 'phase-transitioner': '相变机的配方就不继续显示了，想看可以点进去',
+                'unstable-env': '这个配方有惰气环境版本，你总不需要这个吧',
             }[item.ellipsisReason];
             /* virtual left connect line */ j(itemElement, 'div', { className: 'connect-line connect-line1 connect-line-virtual' }, e => e.title = tooltip);
         } else if (item.children.length) {

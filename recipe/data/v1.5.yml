@@ -13,6 +13,29 @@
   实验息壤铜零件生产: 活动：5实验息壤铜锭 =>[配件机+10s]=> 实验息壤铜零件
   实验息壤铜骨骼生产: 活动：实验息壤铜零件 + 重息壤 =>[封装机+10s]=> 实验息壤铜骨骼
   重息壤龙泡泡生产: 活动：实验龙泡泡重壳 + 实验息壤铜骨骼 =>[封装机+10s]=> 重息壤龙泡泡
+  
+  # 这个是无图标物品测试数据
+  # 铁矿:
+  # 铁板:
+  # 铁齿轮:
+  # 传送带:
+  # 铜矿:
+  # 铜板:
+  # 铜丝:
+  # 电路板:
+  # 机械臂:
+  # 红瓶:
+  # 铁板生产: 5铁矿 =>[冶炼炉]=> 铁板
+  # 铁齿轮生产: 2铁板 =>[组装机]=> 铁齿轮
+  # 传送带生产: 5铁齿轮 + 5铁板 =>[组装机]=> 传送带
+  # 铜板生产: 5铜矿 =>[冶炼炉]=> 铜板
+  # 铜丝生产: 铜板 =>[组装机]=> 铜丝
+  # 电路板生产: 铁板 + 3铜丝 =>[组装机]=> 电路板
+  # 机械臂生产: 电路板 + 5铁齿轮 =>[组装机]=> 机械臂
+  # 红瓶生产: 传送带 + 机械臂 =>[组装机]=> 红瓶
+# 类别:
+#   机器: [冶炼炉, 组装机]
+#   矿物: [铜矿, 铁矿]
 
 图标:
   重息壤龙泡泡: 0000WW^{RQVRmU|00000VRmU|ZE0pPZE0a<O+hh20004oZDn*}000000000XXk=`10000000000aA{+7000000000000000000004sdC7Z2$lO00031001m$Y;R)#0000)000620RR910RR940RR93lmG$%0003100FK500C0~002U1X>Mi!000000ssI28fk83WdZ;I000310AY48F+*=`Z*l+t000_kZf0cy000000ssJEb}%tPY;b5{000008fkK6W&i*H000004q<h8YybiP0RRC2006^jaB^?}005n7aAR)(000zeb8uw<00000001Ze001Ze000nhX?SS>000032nYxO000bOb}>VN01N;C000wXZ)|dIV{CW;0RRmE27mwn01j|zcxeCt000390000CVRkV?fdCu;0000uVRd*z00000b#iVxZE$60I&E-eXF@t-X=89Yb9r-gWo>ghVRd+EY-wR~c{*WiaA;uw0000UX>e^}0000000002009I60)qqq0t5jCh6exu1Mh8QVRRAz3I-SzXPt#WGR6WF01Poe-7nu6)971C38WTjFJhCUCxN!9%v2Kzs{P_DgoH3b{`nqnpRe)=C`6osmuCbEIQnt%5{N}<<cNJPNF>KyE?jiz*Rk*wuxl<)R4;^Dd*$hkwce2UM>uaVx1AlP?c;*yMVXn{t0bXn0rhj6=yXaaz}$Gxea!mP2ta@q1$gLY9Vj~<S)9#n+$Dk0Ujor*L5vSCc0{`B?D=YMPesa)oF;nB%5b2Y=cH#v2`5gC>O0;~L;rBR6N_^`#yu~uRfO&(DC}Y0NP@TFtS@QkRC3gRm%q1=w=Q<=;3{td^YBqJn*F<{m?P$F-*hk$+W-K0sJ1$ki)LdLw)LSR5dy@G=Yi;D8~KIwS0ie5CBdC^W$~VmsDH>Xvx*X#rz$=xU8*=7Ld<T99_}TG8XIM~hFYi~2im*nFcJU?2^bY;ouUF74G1!X1r*1JhGhZ>Af8YF00`YoY@Y@)8&_Vic;&m37_#Dvt4v^4aTBLtHPi9^iSw%Pd~x6)!5iWJ(ZVjNS)I&0?pv|uIl&`BpA8k)F!64YRQQR^qwPthl~UXXCVa<D6;hjU*}E2%oe1|m%+?e-H!(@3<}Xm~Ug<Rc(Y&>e8j^U>JE|J#RzBgU?lR3MRH!=Z2FMuNUyDp3p!re2ELPF5Q+z#ZejhPouxxwvMoRiqgt=}S-y})CP(|OROp1Qe8-HE^2@&3Xi3|+uo;D063{nqJ`fZ!C)2YR<CYKC>+j{Mge_K00SBDj#D_q{C6Gv<^U?w6YOhPmFW*PsFLX^qghHZDS3Nf3?WV|w|0<(>yvQGm9_65z~3_mt*f>An)Shf1}uQ<B(kCQ^X_OU>7it^?G#_bdK#qd3WLrEZ2`B^XW9`45D=NKm_cSZ^7uN*ztBlE~TD;$Y|c_+6B)o7@&fU69LQ-m3-soK*)<)QXV@lcqaNG)hOI~fBizcRj=4Izr_$}PKAu<cTp)zF@qGdymE^zTr_R2}C&k*4Uq<)eMrv`}yOJPFE+yf@Sk_7l1kl9y}+3yJknwK40R%7Y)xU%u`TNpvXkB(HtWmQ9IJ{`ot0Gzg65%7w4I)IA60m((3OW{UATYy@Y6h)4cj8fo@hH|`(l4F|`>;!Zq!2W1R`XXA)e?$D~KWG&|ybz!MqTAuRtbCk%r5E<%P{W^=v)z>rt5)@i!(pleJB6`2)NTu-Sz&&(izU(KKj6FoRsW*(PtFsSe@}2z5)A5FU3?Gn|Qsd@HAjO6u!YjsT-FKJsOEYg#-bjAngIqSMXa

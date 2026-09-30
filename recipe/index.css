@@ -432,11 +432,11 @@ div.panel > div.recipe-node > div.main-line {
     margin: 2px 0;
 }
 div.panel > div.recipe-node > div.main-line > div.machine-name {
-    width: 72px;
+    /* 64px exactly fit 扩容/反应池 in my current environment, so relax it a bit */
+    width: 66px;
     line-height: 18px;
     text-align: center;
     font-size: 12px;
-    width: 64px;
     padding: 4px 4px 2px 4px;
     border-radius: 4px;
     background-color: #d8d8d8;
@@ -451,7 +451,7 @@ div.panel > div.recipe-node > div.main-line > div.machine-name.highlight  {
 }
 div.panel > div.recipe-node > div.main-line > div.connect-line {
     height: 0;
-    width: 12px;
+    width: 11px;
     margin-top: 12px;
     border-width: 0 0 2px 0;
     border-style: solid;
