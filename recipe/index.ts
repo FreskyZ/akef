@@ -87,6 +87,8 @@ interface ItemNode extends NodeLike {
     // - phase transitioner, don't regard phase transitioning as major recipe
     // - unstable env, this recipe have stable env version, no need to display this
     ellipsisReason?: 'duplicate' | 'fresh-water' | 'sewage-reuse' | 'phase-transitioner' | 'unstable-env',
+    // phase transitioned items don't directly connect with parent recipe
+    kind?: 'phase-transition',
     children: RecipeNode[],
     possibleProducts: ItemData[],
     // recipes for sewage harmless treatment
@@ -182,7 +184,7 @@ function collectRecipeTree(item: ItemData, path: string[], includeLimitedTime: b
             itemNode.children.push({ data: recipe, depth: path.length, children: [], kind: 'placeholder' });
         }
         lastRecipeTrailingElementsSpace = (recipe.outputs.length - 1) * 24 + (recipe.event ? 12 : 0);
-
+        
         const children: ItemNode[] = [];
         for (const input of recipe.inputs) {
             if (pagedata["filled-items"].includes(input.name)) {
@@ -705,17 +707,18 @@ function drawRecipeTree(root: ItemNode) {
             }
             // extra input
             if (isPhaseTransitioner) {
-                const xiranGasItem = pagedata.items.find(i => i.name == '息壤气');
+                const itemName = recipe.data.machine == '固气转化机' ? '息壤气' : '液化息壤';
+                const xiranItem = pagedata.items.find(i => i.name == itemName);
                 const extraInputLineElement = j(recipeElement, 'div', {
                     className: 'recipe-line extra-input-line',
-                    dataset: { 'id': xiranGasItem.name },
+                    dataset: { 'id': xiranItem.name },
                 }, e => {
-                    e.title = '意思是机器不在工作的时候也要息壤气6/min';
-                    setupItemImageHighlightTrigger(e, xiranGasItem.name);
-                    e.addEventListener('click', () => { if (item.data.name != xiranGasItem.name) { handleOpenPanel(xiranGasItem); } });
+                    e.title = `意思是机器不在工作的时候也要${itemName}6/min`;
+                    setupItemImageHighlightTrigger(e, xiranItem.name);
+                    e.addEventListener('click', () => { if (item.data.name != xiranItem.name) { handleOpenPanel(xiranItem); } });
                 });
-                /* image */ j(extraInputLineElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, xiranGasItem, 16));
-                /* description */ j(extraInputLineElement, 'span', {}, e => e.innerText = `息壤气 6/min`);
+                /* image */ j(extraInputLineElement, 'div', { className: 'image' }, e => setupSmallImageElement(e, xiranItem, 16));
+                /* description */ j(extraInputLineElement, 'span', {}, e => e.innerText = `${itemName} 6/min`);
             }
 
             // time and amount
