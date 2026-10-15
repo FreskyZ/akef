@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { styleText } from 'node:util';
 import yaml from 'yaml';
 
 type EquipmentKind = '护甲' | '护手' | '配件';
@@ -315,65 +316,100 @@ function test1() {
 // test1();
 
 function dogfood() {
-    // for 集成实训, they have low value so cannot be used as main equipment,
-    // cat2 主能力 and 副能力 cannot use cat1 主能力 and 副能力 as dogfood, and
-    // their cat 1 attribute 主能力 and 副能力 is not used outside, so they cannot be used as normal equipment's dogfood,
-    // their cat 2 value is low so as long as normal equipment have same kind-attribute combination, it cannot use this
-    // set of equipments as dogfood according to game rule, so can completely ignore 集成实训 here
 
+    // for 集成实训
+    // - they have low value so cannot be used as main equipment,
+    // - other sets don't use cat1 主能力副能力 so cannot use 集成实训 as dogfood
+    // - other sets cat2 主能力副能力 cannot use 集成实训 cat1 主能力副能力 as dogfood
+    // - other sets cat2 other attributes are strictly higher than 集成实训 so cannot use 集成实训 as dogfood
+    // so can completely ignore 集成实训 here
     const relatedEquipments = allEquipments.filter(e => e.set != '集成实训');
+
     const kindAttributeCombinations = relatedEquipments
         .flatMap(e => [e.cat11.name, e.cat12?.name, e.cat2.name].filter(x => x).map(n => [e.kind, n] as const))
         .sort(([k1, a1], [k2, a2]) => // sort k and a in their definition order
             EquipmentKinds.indexOf(k1) * 100 + Cat1Names.concat(Object.keys(Cat2Values)).indexOf(a1)
-            - EquipmentKinds.indexOf(k2) * 100 + Cat1Names.concat(Object.keys(Cat2Values)).indexOf(a2))
+            - EquipmentKinds.indexOf(k2) * 100 - Cat1Names.concat(Object.keys(Cat2Values)).indexOf(a2))
         .filter((e, i, a) => a.findIndex(o => o[0] == e[0] && o[1] == e[1]) == i);
-    const possibleCombinationsCount = 3 * (Cat1Names.length - 2 + Object.keys(Cat2Values).length - 1);
-    // currently 55/63
-    console.log(`${kindAttributeCombinations.length} combinations of ${possibleCombinationsCount} possible combinations from ${relatedEquipments.length} related equipments`);
+    // exclude cat1 主能力副能力 and cat2 法术伤害加成
+    const possibleCombinationsCount = EquipmentKinds.length * (Cat1Names.length - 2 + Object.keys(Cat2Values).length - 1);
 
-    const dogfoodTechs: { kind: string, attribute: string, 灼铜装备原件amount: number }[] = [];
+    let cat2涉渊纾难coverage = 0;
     for (const [kind, attribute] of kindAttributeCombinations) {
-        const equipments = relatedEquipments.map(e => e.kind != kind ? null
+        console.log(styleText('yellow', `${kind}-${attribute}`) + ':');
+        const equipmentsOfThisCombination = relatedEquipments.map(e => e.kind != kind ? null
             : e.cat11.name == attribute ? [e, e.cat11.value] as const
             : e.cat12?.name == attribute ? [e, e.cat12.value] as const
-            : e.cat2.name == attribute? [e, e.cat2.value] as const : null).filter(x => x);        
-        const values = equipments.map(e => e[1]).sort((a, b) => b - a).filter((e, i, a) => a.indexOf(e) == i);
-        console.log(`${kind}-${attribute}:`);
+            : e.cat2.name == attribute ? [e, e.cat2.value] as const : null).filter(x => x);
+        if (Object.keys(Cat2Values).includes(attribute) && equipmentsOfThisCombination.some(e => e[0].set == '涉渊' || e[0].set == '纾难')) {
+            cat2涉渊纾难coverage += 1;
+        }
+        const values = equipmentsOfThisCombination.map(e => e[1]).sort((a, b) => b - a).filter((e, i, a) => a.indexOf(e) == i);
+        let maxValueLowestTech: string;
         for (const value of values) {
-            const equipmentsOfThisValue = equipments.filter(e => e[1] == value).map(e => e[0]);
-            // for max value, display their price
-            if (value == values[0]) {
-                equipmentsOfThisValue.sort((e1, e2) => EquipmentTechs.indexOf(e1.tech) - EquipmentTechs.indexOf(e2.tech));
-                console.log(`   ${value}: ${equipmentsOfThisValue.map(e => `${e.name}(${e.tech})`).slice(0, 5)}${equipmentsOfThisValue.length > 5 ? '...' : ''}`);
-                const tech = equipmentsOfThisValue[0].tech;
-                dogfoodTechs.push({ kind, attribute, 灼铜装备原件amount: tech == '息壤' || tech == '赤铜' ? 5 : tech == '赫铜' ? 25 : 50 });
-            } else {
-                console.log(`   ${value}: ${equipmentsOfThisValue.map(e => e.name).slice(0, 5)}${equipmentsOfThisValue.length > 5 ? '...' : ''}`);
+            const equipmentsOfThisValue = equipmentsOfThisCombination.filter(e => e[1] == value)
+                .map(e => e[0]).sort((e1, e2) => EquipmentTechs.indexOf(e1.tech) - EquipmentTechs.indexOf(e2.tech));
+            const lowestTechOfThisValue = equipmentsOfThisValue[0].tech;
+            let hasCheaper = false;
+            if (!maxValueLowestTech) {
+                maxValueLowestTech = lowestTechOfThisValue;
+            } else if (EquipmentTechs.indexOf(lowestTechOfThisValue) < EquipmentTechs.indexOf(maxValueLowestTech as any)) {
+                hasCheaper = true;
             }
+            console.log(`  ${value}${hasCheaper ? '*' : ''}: ${equipmentsOfThisValue.map(e =>
+                (e.set == '涉渊' || e.set == '纾难' ? styleText('red', e.name) : e.name)
+                + (e.tech == lowestTechOfThisValue ? styleText('green', `(${e.tech})`) : ''))}`);
         }
     }
+    // currently 55/63
+    console.log(`${kindAttributeCombinations.length} combinations of ${possibleCombinationsCount} possible combinations from ${relatedEquipments.length} related equipments`);
     // RESULT
-    // for cat1 attributes combinations, 4x3=12 is all covered by 涉渊纾难 equipments
-    // for cat2 attributes combinations, 13 涉渊纾难 equipments cover 13 of 17x3 cat2 attributes
+    // for cat1 combinations, 4x3=12 is all covered by 涉渊纾难 equipments
+    // for cat2 combinations, 18 涉渊纾难 equipments cover 17 of (55 - 12 = 43)/(17 * 3 = 51) cat2 combinations
     // for remaining cat2 combinations, its cat2 value is exactly defined by kind-attribute combination, so they are all same
-    // or more specifically, cat2 combination only have 1 kind of value (without 涉渊纾难) or 2 kinds of value (higher one is 涉渊纾难)
+    // in other words, cat2 combination only have 1 kind of value (without 涉渊纾难) or 2 kinds of value (higher one is 涉渊纾难)
+    console.log(`cat1 涉渊纾难 coverage = 12/12, cat2 涉渊纾难 coverage = ${cat2涉渊纾难coverage}/(${kindAttributeCombinations.length - 12}/${possibleCombinationsCount - 12})`);
+
+    let 精锻助剂count = 0;
+    let 灼铜装备原件count = 0;
+    for (const equipment of relatedEquipments) {
+        for (const [attribute, value] of ([
+            [equipment.cat11.name, equipment.cat11.value],
+            equipment.cat12 ? [equipment.cat12.name, equipment.cat12.value] : null,
+            [equipment.cat2.name, equipment.cat2.value]
+        ] as [string, number][]).filter(x => x)) {
+            精锻助剂count += 1;
+            const availableEquipments = relatedEquipments.map(e => e.kind != equipment.kind ? null
+                : e.cat11.name == attribute && e.cat11.value >= value ? [e, e.cat11.value] as const
+                : e.cat12 && e.cat12.name == attribute && e.cat12.value >= value ? [e, e.cat12.value] as const
+                : e.cat2.name == attribute && e.cat2.value >= value ? [e, e.cat2.value] as const : null).filter(x => x)
+                .sort(([e1], [e2]) => EquipmentTechs.indexOf(e1.tech) - EquipmentTechs.indexOf(e2.tech));
+            const largestValue = availableEquipments.map(e => e[1]).sort((a, b) => b - a)[0];
+            // prefer cheapest equipment over max value equipment,
+            // because max value don't provide much effect as cheap (from 50 to 25 or 5)
+            const [cheapestDogfood, dogfoodValue] = availableEquipments[0];
+            // console.log(`${equipment.name}: ${attribute}+${value}: use ${cheapestDogfood.name} +${
+            //     dogfoodValue}${dogfoodValue != largestValue ? '(use this because of cheap)' : ''}`);
+            const tech = cheapestDogfood.tech;
+            灼铜装备原件count += tech == '息壤' || tech == '赤铜' ? 5 : tech == '赫铜' ? 25 : 50;
+        }
+    }
 
     // ratio of 灼铜装备原件 and 精锻助剂,
     // every 精锻 attempt use 1 精锻助剂 and 5/25/50 灼铜装备原件,
     // so the ratio for a specific equipment+attribute is irrelavent whether you use 3 attempts or 41 attempts
     // it is relavent if one equipment+attribute use more attempts than others, but they should use same probability so ignore
-    let 精锻助剂Count = 0; // count by regarding as 1 attempt success
-    let 灼铜装备原件Count = 0; // count by regarding as 1 attempt success
-    for (const equipment of relatedEquipments) {
-        精锻助剂Count += 2 + (equipment.cat12 ? 1 : 0);
-        灼铜装备原件Count += dogfoodTechs.find(t => t.kind == equipment.kind && t.attribute == equipment.cat11.name).灼铜装备原件amount;
-        灼铜装备原件Count += dogfoodTechs.find(t => t.kind == equipment.kind && t.attribute == equipment.cat2.name).灼铜装备原件amount;
-        if (equipment.cat12) {
-            灼铜装备原件Count += dogfoodTechs.find(t => t.kind == equipment.kind && t.attribute == equipment.cat12.name).灼铜装备原件amount;
-        }
-    }
-    const average = 灼铜装备原件Count / 精锻助剂Count;
-    console.log(`every *week* you need ${120 * average} 灼铜装备零件, that is ${120 * average / 7 / 1440} per minute`);
+    const average = 灼铜装备原件count / 精锻助剂count;
+    // every week you get 120 精锻助剂
+    const speedRequirement = 120 * average / 7 / 1440;
+    const machineCount = speedRequirement / 6;
+    // RESULT: 771/week, 0.076/min or 0.0128 machines
+    // also before change from prefer max value to prefer cheap, it is 0.2/min
+    // this also mean now I have 50000+灼铜，40000+赫铜，60000+赤铜，60000+息壤
+    // even if used interchangeably (regard 50 息壤 as 5 灼铜 which is not allowed in game) I need 100 week to consume them
+    // and consider currently I'm not able to buy 120 精锻助剂 per week, that make it about 4~6 year I guess,
+    // this is calculated at Oct 2026 if this paragraph is going to be kept long time
+    console.log(`every *week* you need ${Math.round(120 * average)} 灼铜装备零件, that is ${
+        Math.round(speedRequirement * 10000) / 10000} per minute or ${Math.round(machineCount * 10000) / 10000} machines`);
 }
 dogfood();
